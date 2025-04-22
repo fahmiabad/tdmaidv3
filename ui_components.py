@@ -36,7 +36,6 @@ class UIComponents:
         
         st.sidebar.title("🩺 Clinical Information")
         patient_data['diagnosis'] = st.sidebar.text_input("Diagnosis/Indication", placeholder="e.g., Pneumonia")
-        patient_data['current_regimen'] = st.sidebar.text_area("Current Dosing Regimen", value="1g IV q12h")
         patient_data['notes'] = st.sidebar.text_area("Clinical Notes", value="No known allergies.")
         
         return page, patient_data
