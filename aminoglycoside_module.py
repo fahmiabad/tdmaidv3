@@ -72,7 +72,7 @@ class AminoglycosideModule:
             recommendations = interpreter.generate_recommendations(status, patient_data['crcl'])
             
             st.markdown("### Clinical Interpretation")
-            interpretation = interpreter.format_recommendations(assessment, status, recommendations)
+            interpretation = interpreter.format_recommendations(assessment, status, recommendations, patient_data)
             st.markdown(interpretation)
             
             # Generate and display print button
@@ -129,21 +129,37 @@ class AminoglycosideModule:
         t_trough = UIComponents.calculate_time_difference(dose_hour, dose_minute, trough_hour, trough_minute)
         t_peak = UIComponents.calculate_time_difference(dose_hour, dose_minute, peak_hour, peak_minute)
         
-        if t_trough >= t_peak:
-            st.error("Trough must be drawn before peak.")
-            return
+        # Handle next day scenario
+        if t_peak < 0:
+            t_peak += 24  # Add 24 hours if peak is on next day
+        if t_trough < 0:
+            t_trough += 24  # Add 24 hours if trough is on next day
         
-        # Calculate individualized PK parameters
         if st.button("Calculate PK Parameters"):
+            # For conventional dosing, trough should be before next dose
+            # Peak should be after infusion of same dose
+            if t_trough < t_peak and t_trough < tau:
+                # This means trough was drawn within same dose interval, which is unusual
+                st.warning("Trough appears to be drawn within same dose interval. For conventional dosing, trough should be drawn just before the next dose.")
+            
             try:
                 # Calculate Ke from two levels
-                delta_t = t_peak - t_trough
+                delta_t = abs(t_peak - t_trough)
+                
+                if delta_t <= 0:
+                    st.error("Invalid time difference between peak and trough.")
+                    return
+                
                 ke = (math.log(trough_level) - math.log(peak_level)) / delta_t
-                ke = max(1e-6, ke)
+                ke = max(1e-6, abs(ke))  # Ensure positive ke
                 t_half = 0.693 / ke
                 
                 # Extrapolate to find Cmax and Cmin
-                cmax = peak_level * math.exp(ke * (t_peak - infusion_duration))
+                if t_peak > infusion_duration:
+                    cmax = peak_level * math.exp(ke * (t_peak - infusion_duration))
+                else:
+                    cmax = peak_level / (t_peak / infusion_duration)
+                
                 cmin = cmax * math.exp(-ke * (tau - infusion_duration))
                 
                 # Calculate Vd
@@ -186,7 +202,7 @@ class AminoglycosideModule:
                 recommendations = interpreter.generate_recommendations(status, patient_data['crcl'])
                 
                 st.markdown("### Clinical Interpretation")
-                interpretation = interpreter.format_recommendations(assessment, status, recommendations)
+                interpretation = interpreter.format_recommendations(assessment, status, recommendations, patient_data)
                 st.markdown(interpretation)
                 
                 # Generate and display print button
@@ -199,3 +215,4 @@ class AminoglycosideModule:
                 
             except Exception as e:
                 st.error(f"Calculation error: {e}")
+                st.info("Please verify that sampling times and concentration values are correct.")
