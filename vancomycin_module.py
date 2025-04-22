@@ -91,7 +91,7 @@ class VancomycinModule:
             recommendations = interpreter.generate_recommendations(status, patient_data['crcl'])
             
             st.markdown("### Clinical Interpretation")
-            interpretation = interpreter.format_recommendations(assessment, status, recommendations)
+            interpretation = interpreter.format_recommendations(assessment, status, recommendations, patient_data)
             st.markdown(interpretation)
             
             # Generate and display print button
@@ -200,7 +200,7 @@ class VancomycinModule:
             recommendations = interpreter.generate_recommendations(status, patient_data['crcl'])
             
             st.markdown("### Clinical Interpretation")
-            interpretation = interpreter.format_recommendations(assessment, status, recommendations)
+            interpretation = interpreter.format_recommendations(assessment, status, recommendations, patient_data)
             st.markdown(interpretation)
             
             # Generate and display print button
@@ -246,24 +246,45 @@ class VancomycinModule:
         t_trough = UIComponents.calculate_time_difference(dose_hour, dose_minute, trough_hour, trough_minute)
         t_peak = UIComponents.calculate_time_difference(dose_hour, dose_minute, peak_hour, peak_minute)
         
-        if t_trough >= t_peak:
-            st.error("Trough must be drawn before peak")
-            return
+        # Handle next day scenario
+        if t_peak < 0:
+            t_peak += 24  # Add 24 hours if peak is on next day
+        if t_trough < 0:
+            t_trough += 24  # Add 24 hours if trough is on next day
         
         if st.button("Calculate PK Parameters"):
+            # For conventional 2-level kinetics, we expect trough before next dose and peak after infusion
+            # But we'll handle both "trough before peak" (within same dose) and "trough before next dose" scenarios
+            
             try:
+                if t_trough < t_peak:
+                    # Trough and peak are within same dose interval
+                    delta_t = t_peak - t_trough
+                else:
+                    # Trough is before next dose, peak is from previous dose
+                    delta_t = (current_interval - t_trough) + (t_peak)
+                
+                if delta_t <= 0:
+                    st.error("Unable to calculate. Please check your sampling times.")
+                    return
+                
                 # Calculate individual PK parameters
-                delta_t = t_peak - t_trough
                 ke_ind = (math.log(measured_trough) - math.log(measured_peak)) / delta_t
-                ke_ind = max(1e-6, ke_ind)
+                ke_ind = max(1e-6, abs(ke_ind))  # Ensure positive ke
                 t_half_ind = 0.693 / ke_ind
                 
-                # Extrapolate to find true Cmax and Cmin
-                time_to_cmax = infusion_duration - (t_peak - infusion_duration)
-                cmax_ind = measured_peak * math.exp(ke_ind * time_to_cmax)
+                # Calculate Vd and extrapolate to find true Cmax and Cmin
+                if t_peak > infusion_duration:
+                    # Peak is post-infusion - back extrapolate to find Cmax
+                    cmax_ind = measured_peak * math.exp(ke_ind * (t_peak - infusion_duration))
+                else:
+                    # Peak is during infusion - estimate Cmax
+                    cmax_ind = measured_peak / (t_peak / infusion_duration)
+                
+                # Calculate Cmin at end of interval
                 cmin_ind = cmax_ind * math.exp(-ke_ind * (current_interval - infusion_duration))
                 
-                # Calculate Vd
+                # Calculate Vd using the dose/concentration relationship
                 term_inf = 1 - math.exp(-ke_ind * infusion_duration)
                 term_tau = 1 - math.exp(-ke_ind * current_interval)
                 denom = cmax_ind * ke_ind * infusion_duration * term_tau
@@ -318,7 +339,7 @@ class VancomycinModule:
                     recommendations = interpreter.generate_recommendations(status, patient_data['crcl'])
                     
                     st.markdown("### Clinical Interpretation")
-                    interpretation = interpreter.format_recommendations(assessment, status, recommendations)
+                    interpretation = interpreter.format_recommendations(assessment, status, recommendations, patient_data)
                     st.markdown(interpretation)
                     
                     # Generate and display print button
@@ -337,3 +358,4 @@ class VancomycinModule:
                 
             except Exception as e:
                 st.error(f"Calculation error: {e}")
+                st.info("Please verify that sampling times and concentration values are correct.")
