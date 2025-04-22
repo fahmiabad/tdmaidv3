@@ -12,7 +12,15 @@ class PKCalculator:
     def calculate_initial_parameters(self):
         """Calculate initial PK parameters based on population estimates."""
         vd = self.config["Vd_L_kg"] * self.weight
-        cl = self.crcl * self.config["cl_factor"] * 60 / 1000
+        
+        if self.drug == "Vancomycin":
+            # For vancomycin, clearance is typically calculated as:
+            # CL (L/hr) = CrCl (mL/min) * 0.8 * 60 / 1000
+            cl = self.crcl * self.config["cl_factor"] * 60 / 1000
+        else:
+            # For aminoglycosides
+            cl = self.crcl * self.config["cl_factor"] * 60 / 1000
+        
         cl = max(0.1, cl)  # Minimum clearance
         ke = cl / vd if vd > 0 else 0.01
         ke = max(0.005, ke)  # Minimum Ke
