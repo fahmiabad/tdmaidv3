@@ -1,6 +1,6 @@
 # ui_components.py
 import streamlit as st
-from datetime import datetime, time, timedelta
+from datetime import datetime, date, time, timedelta
 
 class UIComponents:
     @staticmethod
@@ -69,10 +69,13 @@ class UIComponents:
         """Create a standardized datetime input."""
         default_date = datetime.now().date()
         default_time = time(default_hour, default_minute)
-        return st.datetime_input(
-            label, 
-            value=datetime.combine(default_date, default_time),
-            step=timedelta(minutes=15)
+        default_datetime = datetime.combine(default_date, default_time)
+        
+        return st.date_input(
+            label,
+            value=default_datetime,
+            min_value=datetime(2020, 1, 1),
+            max_value=datetime(2030, 12, 31)
         )
     
     @staticmethod
