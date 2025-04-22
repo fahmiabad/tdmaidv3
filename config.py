@@ -70,7 +70,7 @@ DRUG_CONFIGS = {
     "Vancomycin": {
         "pk_parameters": {
             "Vd_L_kg": 0.7,
-            "cl_fraction": 0.8,
+            "cl_factor": 0.8,
             "rounding_base": 250
         },
         "regimens": {
