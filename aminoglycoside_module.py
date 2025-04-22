@@ -72,7 +72,16 @@ class AminoglycosideModule:
             recommendations = interpreter.generate_recommendations(status, patient_data['crcl'])
             
             st.markdown("### Clinical Interpretation")
-            st.markdown(interpreter.format_recommendations(assessment, status, recommendations))
+            interpretation = interpreter.format_recommendations(assessment, status, recommendations)
+            st.markdown(interpretation)
+            
+            # Generate and display print button
+            report = UIComponents.generate_report(
+                drug, regimen, patient_data, pk_params, predicted_levels,
+                f"Recommended dose: {dose} mg every {tau} hours (infused over {infusion_duration} hr)",
+                interpretation
+            )
+            UIComponents.create_print_button(report)
     
     @staticmethod
     def conventional_dosing(patient_data):
@@ -99,21 +108,26 @@ class AminoglycosideModule:
         with col3:
             infusion_duration = st.number_input("Infusion Duration (hr)", value=1.0)
         
-        # Dose timing
-        dose_time = UIComponents.create_datetime_input("Dose Start Time", 12, 0)
+        # Dose administration time
+        st.subheader("Dose Administration Time")
+        dose_hour, dose_minute, dose_display = UIComponents.create_time_input("Dose Start Time", 9, 0, key="dose")
+        st.info(f"Dose given at: {dose_display}")
         
-        # Measured levels
+        # Sampling times
+        st.subheader("Sampling Times")
         col1, col2 = st.columns(2)
         with col1:
             trough_level = st.number_input("Trough Level (mg/L)", min_value=0.0, value=1.0)
-            trough_time = UIComponents.create_datetime_input("Trough Sample Time", 11, 30)
+            trough_hour, trough_minute, trough_display = UIComponents.create_time_input("Trough Sample Time", 8, 30, key="trough")
+            st.info(f"Trough drawn at: {trough_display}")
         with col2:
             peak_level = st.number_input("Peak Level (mg/L)", min_value=0.0, value=8.0)
-            peak_time = UIComponents.create_datetime_input("Peak Sample Time", 13, 30)
+            peak_hour, peak_minute, peak_display = UIComponents.create_time_input("Peak Sample Time", 11, 0, key="peak")
+            st.info(f"Peak drawn at: {peak_display}")
         
-        # Calculate times relative to dose
-        t_trough = (trough_time - dose_time).total_seconds() / 3600
-        t_peak = (peak_time - dose_time).total_seconds() / 3600
+        # Calculate time differences
+        t_trough = UIComponents.calculate_time_difference(dose_hour, dose_minute, trough_hour, trough_minute)
+        t_peak = UIComponents.calculate_time_difference(dose_hour, dose_minute, peak_hour, peak_minute)
         
         if t_trough >= t_peak:
             st.error("Trough must be drawn before peak.")
@@ -140,7 +154,6 @@ class AminoglycosideModule:
                 cl = ke * vd if vd > 0 else 0
                 
                 # Display results
-                st.markdown("### Individualized PK Parameters")
                 results = {
                     "ke": ke,
                     "t_half": t_half,
@@ -155,6 +168,8 @@ class AminoglycosideModule:
                 UIComponents.display_results(results, levels, "")
                 
                 # Generate new dose recommendation
+                st.markdown("---")
+                st.subheader("Dose Adjustment")
                 desired_peak = st.number_input("Desired Peak (mg/L)", value=targets['peak']['min'])
                 desired_interval = st.number_input("Desired Interval (hr)", value=tau)
                 
@@ -162,7 +177,25 @@ class AminoglycosideModule:
                 new_dose = desired_peak * vd * (1 - math.exp(-ke * desired_interval))
                 new_dose = calculator._round_dose(new_dose)
                 
-                st.success(f"Suggested new dose: {new_dose} mg every {desired_interval} hours")
+                recommendation = f"Suggested new dose: {new_dose} mg every {desired_interval} hours"
+                st.success(recommendation)
+                
+                # Clinical interpretation
+                interpreter = ClinicalInterpreter(drug, regimen, targets)
+                assessment, status = interpreter.assess_levels(levels)
+                recommendations = interpreter.generate_recommendations(status, patient_data['crcl'])
+                
+                st.markdown("### Clinical Interpretation")
+                interpretation = interpreter.format_recommendations(assessment, status, recommendations)
+                st.markdown(interpretation)
+                
+                # Generate and display print button
+                report = UIComponents.generate_report(
+                    drug, regimen, patient_data, results, levels,
+                    recommendation,
+                    interpretation
+                )
+                UIComponents.create_print_button(report)
                 
             except Exception as e:
                 st.error(f"Calculation error: {e}")
