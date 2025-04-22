@@ -122,9 +122,22 @@ class ClinicalInterpreter:
         
         return recommendations
     
-    def format_recommendations(self, assessment, status, recommendations):
-        """Format recommendations in markdown"""
-        formatted = f"""
+    def format_recommendations(self, assessment, status, recommendations, patient_data=None):
+        """Format recommendations in markdown with patient details"""
+        formatted = ""
+        
+        if patient_data:
+            formatted += f"""
+**Patient Information:**
+- Patient ID: {patient_data['patient_id']}
+- Ward: {patient_data['ward']}
+- Diagnosis: {patient_data.get('diagnosis', 'N/A')}
+- Current Regimen: {patient_data.get('current_regimen', 'N/A')}
+- Renal Function: {patient_data['renal_function']}
+
+"""
+        
+        formatted += f"""
 **Assessment:** {status.capitalize()}
 
 **Findings:**
@@ -138,7 +151,7 @@ class ClinicalInterpreter:
         
         return formatted
     
-    def generate_llm_interpretation(self, pk_params, levels, recommendations):
+    def generate_llm_interpretation(self, pk_params, levels, recommendations, patient_data=None):
         """Generate detailed interpretation using LLM"""
         # Check if we have API key
         api_key = os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY", None)
@@ -148,7 +161,10 @@ class ClinicalInterpreter:
         
         # This is a placeholder for LLM integration
         # In production, you would integrate with OpenAI API here
+        assessment, status = self.assess_levels(levels)
         return self.format_recommendations(
-            *self.assess_levels(levels),
-            self.generate_recommendations(status, pk_params.get('crcl', 80))
+            assessment,
+            status,
+            self.generate_recommendations(status, pk_params.get('crcl', 80)),
+            patient_data
         )
