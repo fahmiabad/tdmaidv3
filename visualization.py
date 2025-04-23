@@ -157,7 +157,7 @@ class PKVisualizer:
         )
     
     @staticmethod
-    def display_pk_chart(pk_params, levels, dose_info):
+    def display_pk_chart(pk_params, levels, dose_info, key_suffix=""):
         """
         Display a concentration-time chart with proper error handling.
         
@@ -165,8 +165,12 @@ class PKVisualizer:
         - pk_params: Dictionary with PK parameters (ke, t_half, etc.)
         - levels: Dictionary with peak and trough values
         - dose_info: Dictionary with tau and infusion_duration
+        - key_suffix: Optional suffix to make checkbox key unique
         """
-        if st.checkbox("Show Concentration-Time Curve"):
+        # Generate a unique key for the checkbox
+        checkbox_key = f"show_conc_time_curve_{key_suffix}"
+        
+        if st.checkbox("Show Concentration-Time Curve", key=checkbox_key):
             peak = levels.get('peak', 0)
             trough = levels.get('trough', 0)
             ke = pk_params.get('ke', 0)
