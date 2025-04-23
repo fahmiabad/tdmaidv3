@@ -488,7 +488,7 @@ class VancomycinModule:
                     
                     # Calculate Vd from peak concentration
                     if t_peak > infusion_duration:
-                        # Back extrapolate to find Cmax at end of infusion
+                       # Back extrapolate to find Cmax at end of infusion
                         cmax_ind = measured_peak * math.exp(ke_ind * (t_peak - infusion_duration))
                     else:
                         # Peak is during infusion - estimate Cmax
