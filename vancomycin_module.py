@@ -238,6 +238,8 @@ class VancomycinModule:
             else:
                 recommended_interval = 8
 
+            st.info(f"Based on CrCl of {crcl} mL/min, a dosing interval of {recommended_interval}h is generally recommended")
+
             # Adjust based on measured trough relative to target range midpoint
             target_trough_midpoint = (trough_min + trough_max) / 2
 
@@ -299,222 +301,50 @@ class VancomycinModule:
             # Check if we have any recommendations with trough in range - prioritize these
             in_range_recs = [rec for rec in all_recommendations if rec['trough_in_range']]
 
-            # Get the single best recommendation
+            # If we have in-range recommendations, prefer those over out-of-range ones
             if in_range_recs:
-                best_rec = in_range_recs[0]
-                st.success("Found optimal regimen with trough within target range")
+                display_recs = in_range_recs[:3]
+                st.success(f"Found {len(in_range_recs)} recommendations with trough in target range ({trough_min}-{trough_max} mg/L)")
             else:
-                best_rec = all_recommendations[0]
-                st.warning(f"No regimens have trough exactly in target range ({trough_min}-{trough_max} mg/L). Using best available match.")
+                display_recs = all_recommendations[:3]
+                st.warning(f"No recommendations have trough exactly in target range ({trough_min}-{trough_max} mg/L). Showing closest matches.")
 
-            # Format for detailed recommendation
+            # Display top recommendations in a table
+            st.subheader("Dosing Options (Best Match First)")
+            rec_data = []
+
+            for i, rec in enumerate(display_recs):
+                trough_status = "✅ In range" if rec['trough_in_range'] else "❌ Out of range"
+
+                rec_data.append({
+                    "Rank": i+1,
+                    "Dose (mg)": rec['dose'],
+                    "Interval (hr)": rec['interval'],
+                    "Predicted AUC": f"{rec['predicted_auc']:.1f}",
+                    "Predicted Trough": f"{rec['predicted_trough']:.1f}",
+                    "Trough Status": trough_status
+                })
+
+            st.table(rec_data)
+
+            # Use the best recommendation
+            best_rec = display_recs[0]
             old_regimen = f"{current_dose} mg every {current_interval} hours"
             new_regimen = f"{best_rec['dose']} mg every {best_rec['interval']} hours"
 
-            # Calculate changes from current regimen
-            dose_change_pct = ((best_rec['dose'] - current_dose) / current_dose * 100) if current_dose > 0 else float('inf')
-            dose_change_direction = "increased" if best_rec['dose'] > current_dose else "decreased"
-            interval_change = "unchanged" if best_rec['interval'] == current_interval else f"changed from {current_interval}h to {best_rec['interval']}h"
-            daily_dose_current = (24 / current_interval) * current_dose if current_interval > 0 else 0
-            daily_dose_new = (24 / best_rec['interval']) * best_rec['dose'] if best_rec['interval'] > 0 else 0
-            daily_dose_change_pct = ((daily_dose_new - daily_dose_current) / daily_dose_current * 100) if daily_dose_current > 0 else float('inf')
-            
-            # Enhanced target information
-            auc_target_status = "within target range" if abs(best_rec['predicted_auc'] - target_auc) / target_auc < 0.1 else (
-                "below target range" if best_rec['predicted_auc'] < target_auc * 0.9 else "above target range"
-            )
-            
-            trough_target_status = "within target range" if trough_min <= best_rec['predicted_trough'] <= trough_max else (
-                "below target range" if best_rec['predicted_trough'] < trough_min else "above target range"
-            )
+            st.subheader("Recommendation Summary")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("**Current Regimen:**")
+                st.info(old_regimen)
+                st.markdown(f"Measured Trough: {measured_trough:.1f} mg/L")
+                st.markdown(f"Estimated AUC: {current_auc:.1f} mg·hr/L")
 
-            # Display detailed recommendation
-            st.subheader("Optimal Dose Recommendation")
-            
-            st.markdown("#### Current Regimen Assessment")
-            st.info(old_regimen)
-            st.markdown(f"• Measured Trough: **{measured_trough:.1f} mg/L** ({trough_target_status})")
-            st.markdown(f"• Estimated AUC: **{current_auc:.1f} mg·hr/L** ({auc_target_status})")
-            st.markdown(f"• Daily Dose: **{daily_dose_current:.1f} mg/day**")
-            
-            st.markdown("#### Recommended New Regimen")
-            st.success(new_regimen)
-            st.markdown(f"• Predicted Trough: **{best_rec['predicted_trough']:.1f} mg/L** ({trough_target_status})")
-            st.markdown(f"• Predicted AUC: **{best_rec['predicted_auc']:.1f} mg·hr/L** ({auc_target_status})")
-            st.markdown(f"• Daily Dose: **{daily_dose_new:.1f} mg/day** " +
-                       f"({abs(daily_dose_change_pct):.1f}% {dose_change_direction} from current)")
-            
-            st.markdown("#### Clinical Rationale")
-            rationale_points = []
-            
-            # Add AUC-related rationale
-            if abs(best_rec['predicted_auc'] - target_auc) <= target_auc * 0.05:
-                rationale_points.append(f"• The recommended regimen achieves AUC of {best_rec['predicted_auc']:.1f} mg·hr/L, " +
-                                       f"which is very close to the target AUC of {target_auc} mg·hr/L.")
-            elif abs(best_rec['predicted_auc'] - target_auc) <= target_auc * 0.1:
-                rationale_points.append(f"• The recommended regimen achieves AUC of {best_rec['predicted_auc']:.1f} mg·hr/L, " +
-                                       f"which is within 10% of the target AUC of {target_auc} mg·hr/L.")
-            else:
-                rationale_points.append(f"• The recommended regimen achieves AUC of {best_rec['predicted_auc']:.1f} mg·hr/L, " +
-                                       f"which is the closest achievable to the target AUC of {target_auc} mg·hr/L " +
-                                       f"while balancing other clinical factors.")
-            
-            # Add trough-related rationale
-            if trough_min <= best_rec['predicted_trough'] <= trough_max:
-                rationale_points.append(f"• The predicted trough of {best_rec['predicted_trough']:.1f} mg/L falls within " +
-                                       f"the target range of {trough_min}-{trough_max} mg/L for {regimen} therapy.")
-            else:
-                closest_boundary = trough_min if best_rec['predicted_trough'] < trough_min else trough_max
-                rationale_points.append(f"• The predicted trough of {best_rec['predicted_trough']:.1f} mg/L is outside " +
-                                       f"the target range of {trough_min}-{trough_max} mg/L, but is the closest achievable " +
-                                       f"while maintaining an appropriate AUC.")
-            
-            # Add interval rationale based on renal function
-            if best_rec['interval'] == recommended_interval:
-                rationale_points.append(f"• The interval of {best_rec['interval']} hours is optimal based on the patient's " +
-                                       f"renal function (CrCl = {crcl:.1f} mL/min).")
-            else:
-                rationale_points.append(f"• While {recommended_interval} hours would be the standard interval for CrCl of {crcl:.1f} mL/min, " +
-                                       f"an interval of {best_rec['interval']} hours better achieves the target AUC and trough.")
-            
-            # Add clinical considerations
-            if regimen == "empiric":
-                rationale_points.append("• This empiric regimen aims to achieve adequate exposure for most pathogens while " +
-                                       "minimizing toxicity risk during initial therapy.")
-            else:  # definitive
-                rationale_points.append("• This definitive therapy regimen targets higher exposures appropriate for documented " +
-                                       "infections requiring more aggressive vancomycin therapy.")
-            
-            # Add PK parameter considerations
-            if adjusted_params['cl'] < 0.05:
-                rationale_points.append("• Patient has severely impaired vancomycin clearance, requiring extended interval to " +
-                                       "prevent drug accumulation.")
-            elif adjusted_params['cl'] > 0.1:
-                rationale_points.append(f"• Patient's vancomycin clearance of {adjusted_params['cl']:.3f} L/kg/hr is relatively high, " +
-                                       "which has been accounted for in the dosing recommendation.")
-            
-                            st.markdown("\n".join(rationale_points))
-                
-                # Add practical notes
-                st.markdown("#### Practical Considerations")
-                prac_notes = []
-                
-                # Round dose to nearest vial size if appropriate
-                standard_vials = [500, 750, 1000, 1250, 1500, 1750, 2000]
-                closest_vial = min(standard_vials, key=lambda x: abs(x - best_rec['dose']))
-                if abs(closest_vial - best_rec['dose']) <= 50:  # Within 50mg
-                    prac_notes.append(f"• The recommended dose ({best_rec['dose']} mg) is close to a standard vial size of {closest_vial} mg.")
-                    
-                # Add infusion time note
-                if best_rec['dose'] > 1000 and infusion_duration < 1.5:
-                    prac_notes.append(f"• Consider extending infusion time to 1.5-2 hours for doses > 1000 mg to minimize infusion reactions.")
-                
-                # Add monitoring notes based on PK parameters
-                if t_half_ind > 12:
-                    next_level_time = "16-24 hours after the next dose"
-                    prac_notes.append(f"• With extended half-life of {t_half_ind:.1f} hours, recommend checking follow-up levels at {next_level_time}.")
-                else:
-                    next_level_time = "30 minutes before the next dose" if best_rec['interval'] <= 24 else "at a consistent time of day"
-                    prac_notes.append(f"• Recommend checking a follow-up trough level after 3-4 doses (at steady state), drawn {next_level_time}.")
-                
-                # Add a note about timing if peak/trough timing was unusual
-                if t_peak < 2.0 or t_trough > -1.0 and t_trough < current_interval - 2.0:
-                    prac_notes.append("• Note that the timing of peak and trough samples was not at typical times. " +
-                                     "For future monitoring, consider drawing peak 1-2 hours after end of infusion and trough 30 minutes before next dose.")
-                
-                # Add renal function monitoring if necessary
-                if crcl < 50:
-                    prac_notes.append(f"• With CrCl of {crcl:.1f} mL/min, recommend monitoring renal function at least every 2-3 days while on therapy.")
-                
-                if len(prac_notes) > 0:
-                    st.markdown("\n".join(prac_notes))
-
-                # Clinical interpretation
-                interpreter = ClinicalInterpreter("Vancomycin", regimen, targets)
-
-                # First assess current levels
-                current_levels_for_interp = { 'peak': cmax_ind, 'trough': cmin_ind, 'auc': current_auc }
-                current_assessment, current_status = interpreter.assess_levels(current_levels_for_interp)
-
-                predicted_new_levels = { 'peak': best_rec['predicted_peak'], 'trough': best_rec['predicted_trough'], 'auc': best_rec['predicted_auc'] }
-                new_assessment, new_status = interpreter.assess_levels(predicted_new_levels)
-
-                combined_assessment = [f"CURRENT REGIMEN: {old_regimen}"] + current_assessment + ["", f"RECOMMENDED REGIMEN: {new_regimen}"] + new_assessment
-                recommendations = interpreter.generate_recommendations(new_status, patient_data['crcl'])
-
-                if best_rec['dose'] != current_dose or best_rec['interval'] != current_interval:
-                     dose_change_pct = abs(best_rec['dose'] - current_dose) / current_dose * 100 if current_dose > 0 else float('inf')
-                     if dose_change_pct > 20:
-                          change_direction = "increased" if best_rec['dose'] > current_dose else "decreased"
-                          recommendations.insert(0, f"Dose {change_direction} by {dose_change_pct:.0f}% to achieve target AUC and trough")
-                     if best_rec['interval'] != current_interval:
-                          recommendations.insert(0, f"Interval changed from {current_interval}h to {best_rec['interval']}h based on individual PK parameters and target levels")
-
-                st.markdown("### Complete Clinical Interpretation")
-                interpretation = interpreter.format_recommendations(combined_assessment, new_status, recommendations, patient_data)
-                st.markdown(interpretation)
-
-                # Generate report and print button
-                report = UIComponents.generate_report(
-                    "Vancomycin", 
-                    f"{regimen} therapy - Peak/Trough adjustment", 
-                    patient_data,
-                    individual_params, 
-                    measured_levels_display, # Use calculated levels for report consistency
-                    f"Changed from {old_regimen} to {new_regimen}", 
-                    interpretation
-                )
-                UIComponents.create_print_button(report)
-
-                # Visualize profiles
-                st.markdown("### Predicted Concentration-Time Profiles")
-                tab1, tab2 = st.tabs(["Current Regimen", "New Regimen"])
-                with tab1:
-                    PKVisualizer.display_pk_chart(
-                        individual_params, 
-                        current_levels_for_interp,
-                        {'tau': current_interval, 'infusion_duration': infusion_duration}, 
-                        key_suffix="current_peaktrough"
-                    )
-                with tab2:
-                    PKVisualizer.display_pk_chart(
-                        individual_params, 
-                        predicted_new_levels,
-                        {'tau': best_rec['interval'], 'infusion_duration': infusion_duration}, 
-                        key_suffix="new_peaktrough"
-                    )
-
-            # --- END OF TRY BLOCK ---
-            except ZeroDivisionError:
-                 st.error("Calculation Error: Division by zero occurred. This might be due to zero interval, infusion duration, or invalid PK parameters. Please check inputs.")
-            except ValueError as ve:
-                 st.error(f"Calculation Error: Invalid value encountered ({ve}). This might be due to taking the log of non-positive concentrations or issues with time inputs. Please check measured levels and times.")
-            except OverflowError as oe:
-                 st.error(f"Calculation Error: Numerical overflow occurred ({oe}). This might indicate extreme PK parameters or very long intervals/infusion times. Please check inputs.")
-            except Exception as e:
-                st.error(f"An unexpected error occurred during calculations: {str(e)}")
-                st.warning("Please double-check your input values (dose, interval, levels, times) and ensure they are clinically reasonable.")
-            
-            # Add practical notes
-            st.markdown("#### Practical Considerations")
-            prac_notes = []
-            
-            # Round dose to nearest vial size if appropriate
-            standard_vials = [500, 750, 1000, 1250, 1500, 1750, 2000]
-            closest_vial = min(standard_vials, key=lambda x: abs(x - best_rec['dose']))
-            if abs(closest_vial - best_rec['dose']) <= 50:  # Within 50mg
-                prac_notes.append(f"• The recommended dose ({best_rec['dose']} mg) is close to a standard vial size of {closest_vial} mg.")
-                
-            # Add infusion time note
-            if best_rec['dose'] > 1000 and infusion_duration < 1.5:
-                prac_notes.append(f"• Consider extending infusion time to 1.5-2 hours for doses > 1000 mg to minimize infusion reactions.")
-            
-            # Add monitoring notes
-            next_level_time = "30 minutes before the next dose" if best_rec['interval'] <= 24 else "at a consistent time of day"
-            prac_notes.append(f"• Recommend checking a follow-up trough level after 3-4 doses (at steady state), drawn {next_level_time}.")
-            
-            if len(prac_notes) > 0:
-                st.markdown("\n".join(prac_notes))
+            with col2:
+                st.markdown("**Recommended New Regimen:**")
+                st.success(new_regimen)
+                st.markdown(f"Predicted Trough: {best_rec['predicted_trough']:.1f} mg/L")
+                st.markdown(f"Predicted AUC: {best_rec['predicted_auc']:.1f} mg·hr/L")
 
             # Clinical interpretation
             interpreter = ClinicalInterpreter("Vancomycin", regimen, targets)
@@ -683,3 +513,251 @@ class VancomycinModule:
                     else: # t_peak == t_trough, cannot calculate ke
                          st.error("Peak and Trough cannot be drawn at the exact same time.")
                          return
+
+                    if delta_t <= 0:
+                        st.error("Invalid time calculations (delta_t <= 0). Please check your sampling times.")
+                        return
+
+                    # Calculate ke using the two points
+                    ke_ind = (math.log(level1) - math.log(level2)) / delta_t if level1 > 0 and level2 > 0 else 0
+                    ke_ind = max(1e-6, abs(ke_ind)) # Ensure positive ke
+                    t_half_ind = 0.693 / ke_ind if ke_ind > 0 else float('inf')
+
+                    # Calculate Cmax at end of infusion by back-extrapolating from the peak measurement
+                    if t_peak > infusion_duration:
+                         cmax_ind = measured_peak * math.exp(ke_ind * (t_peak - infusion_duration))
+                    elif t_peak > 0: # Peak measured during infusion
+                         # This requires a more complex formula or assumption, often Cmax is estimated
+                         # Using a simplified approach assuming linear rise during infusion for approximation:
+                         c_inf = measured_peak * (infusion_duration / t_peak)
+                         cmax_ind = c_inf # Approximate Cmax = concentration at end of infusion
+                         st.warning("Peak measured during infusion. Cmax is estimated.")
+                    else: # t_peak <= 0, invalid time
+                         st.error("Invalid Peak time calculation relative to dose start.")
+                         return
+
+                    # Calculate Cmin just before the next dose
+                    cmin_ind = cmax_ind * math.exp(-ke_ind * (current_interval - infusion_duration))
+
+
+                # Calculate Vd using the dose/concentration relationship (Sawchuk-Zaske method approximation)
+                term_inf = 1 - math.exp(-ke_ind * infusion_duration) if ke_ind * infusion_duration < 700 else 1 # Avoid overflow
+                term_tau = 1 - math.exp(-ke_ind * current_interval) if ke_ind * current_interval < 700 else 1 # Avoid overflow
+
+                # Use Cmax and Cmin derived from levels
+                if term_tau > 1e-9 and cmax_ind > cmin_ind: # Ensure valid denominator and concentration difference
+                     vd_ind = (current_dose / infusion_duration) * term_inf / (ke_ind * (cmax_ind - cmin_ind * math.exp(-ke_ind * (current_interval-infusion_duration))))
+                     vd_ind = max(0.1, vd_ind) # Ensure vd is positive and realistic lower bound
+                     cl_ind = ke_ind * vd_ind
+                else:
+                    st.warning("Could not calculate Vd accurately due to small concentration changes or interval/infusion duration issues. Using population Vd for CL estimation.")
+                    # Fallback to population Vd if calculation fails
+                    pop_params = calculator.calculate_initial_parameters()
+                    vd_ind = pop_params['vd']
+                    cl_ind = ke_ind * vd_ind
+
+
+                individual_params = {
+                    'ke': ke_ind,
+                    't_half': t_half_ind,
+                    'vd': vd_ind,
+                    'cl': cl_ind
+                }
+
+                # Calculate current AUC using derived individual parameters
+                current_auc = calculator.calculate_vancomycin_auc(
+                    cmax_ind,
+                    cmin_ind,
+                    ke_ind,
+                    current_interval,
+                    infusion_duration
+                )
+
+                # Note: Using calculated Cmax/Cmin for consistency in reporting
+                measured_levels_display = {
+                    'peak': cmax_ind, # Display calculated steady-state peak
+                    'trough': cmin_ind, # Display calculated steady-state trough
+                    'auc': current_auc
+                }
+
+                # Display results using consistent format
+                UIComponents.display_results(
+                    individual_params,
+                    measured_levels_display,
+                    f"PK parameters estimated from Peak ({measured_peak:.1f} at {t_peak:.1f}h) and Trough ({measured_trough:.1f} at {t_trough:.1f}h)"
+                )
+
+                # --- Dose Adjustment Recommendation ---
+                st.markdown("### Dose Adjustment Recommendation")
+                crcl = patient_data['crcl']
+                interval_options = [8, 12, 24, 36, 48]
+
+                if crcl < 20: recommended_interval = 48
+                elif crcl < 30: recommended_interval = 36
+                elif crcl < 40: recommended_interval = 24
+                elif crcl < 60: recommended_interval = 12
+                else: recommended_interval = 8
+                st.info(f"Based on CrCl of {crcl} mL/min, a dosing interval of {recommended_interval}h is generally recommended")
+
+                all_recommendations = []
+
+                if cl_ind > 0 and vd_ind > 0: # Ensure valid PK parameters before recommending
+                    ke = individual_params['ke'] # Use calculated ke
+                    vd = individual_params['vd'] # Use calculated vd
+
+                    for potential_interval in interval_options:
+                        target_daily_dose = target_auc * cl_ind
+                        dose_per_interval = target_daily_dose / (24 / potential_interval)
+                        practical_dose = calculator._round_dose(dose_per_interval)
+
+                        # Predict new levels using individual PK parameters
+                        # Formula for Cmax at steady state
+                        term1 = (practical_dose / (vd * ke * infusion_duration)) if (vd * ke * infusion_duration) > 1e-9 else 0
+                        term2_num = (1 - math.exp(-ke * infusion_duration)) if (ke * infusion_duration) < 700 else 1
+                        term2_den = (1 - math.exp(-ke * potential_interval)) if (ke * potential_interval) < 700 else 1
+                        peak_ind = term1 * term2_num / term2_den if term2_den > 1e-9 else 0
+
+                        # Formula for Cmin at steady state
+                        trough_ind = peak_ind * math.exp(-ke * (potential_interval - infusion_duration)) if (ke * (potential_interval - infusion_duration)) < 700 else 0
+
+                        # Calculate new AUC with these predicted levels
+                        new_auc = calculator.calculate_vancomycin_auc(
+                            peak_ind,
+                            trough_ind,
+                            ke,
+                            potential_interval,
+                            infusion_duration
+                        )
+
+                        # Check trough range
+                        trough_in_range = trough_min <= trough_ind <= trough_max
+
+                        # Calculate match scores
+                        auc_match = abs(new_auc - target_auc) / target_auc if target_auc > 0 else 1
+
+                        if not trough_in_range:
+                            trough_match = min(abs(trough_ind - trough_min), abs(trough_ind - trough_max)) / ((trough_min + trough_max) / 2) if (trough_min + trough_max) > 0 else 1
+                        else:
+                            trough_match = 0
+
+                        match_score = (auc_match * 0.7) + (trough_match * 1.3)
+                        if trough_ind < trough_min * 0.8 or trough_ind > trough_max * 1.2:
+                            match_score += 1 # Penalty if way out
+
+                        all_recommendations.append({
+                            'interval': potential_interval,
+                            'dose': practical_dose,
+                            'predicted_auc': new_auc,
+                            'predicted_trough': trough_ind,
+                            'predicted_peak': peak_ind,
+                            'auc_match': auc_match,
+                            'trough_match': trough_match,
+                            'match_score': match_score,
+                            'trough_in_range': trough_in_range
+                        })
+                else:
+                    st.error("Cannot calculate recommendations due to invalid individual PK parameters (CL or Vd is zero or negative).")
+                    return # Stop if CL/Vd invalid
+
+                # Sort and display recommendations
+                all_recommendations.sort(key=lambda x: x['match_score'])
+                in_range_recs = [rec for rec in all_recommendations if rec['trough_in_range']]
+
+                if in_range_recs:
+                    display_recs = in_range_recs[:3]
+                    st.success(f"Found {len(in_range_recs)} recommendations with trough in target range ({trough_min}-{trough_max} mg/L)")
+                elif all_recommendations: # If no in-range, show closest matches
+                    display_recs = all_recommendations[:3]
+                    st.warning(f"No recommendations have trough exactly in target range ({trough_min}-{trough_max} mg/L). Showing closest matches.")
+                else: # If no recommendations calculated at all
+                    st.error("No dosing recommendations could be generated.")
+                    display_recs = []
+
+
+                if display_recs: # Only proceed if recommendations exist
+                    st.subheader("Dosing Options (Best Match First)")
+                    rec_data = []
+                    for i, rec in enumerate(display_recs):
+                        trough_status = "✅ In range" if rec['trough_in_range'] else "❌ Out of range"
+                        rec_data.append({
+                            "Rank": i+1, "Dose (mg)": rec['dose'], "Interval (hr)": rec['interval'],
+                            "Predicted AUC": f"{rec['predicted_auc']:.1f}", "Predicted Trough": f"{rec['predicted_trough']:.1f}",
+                            "Trough Status": trough_status
+                        })
+                    st.table(rec_data)
+
+                    # Use the best recommendation
+                    best_rec = display_recs[0]
+                    old_regimen = f"{current_dose} mg every {current_interval} hours"
+                    new_regimen = f"{best_rec['dose']} mg every {best_rec['interval']} hours"
+
+                    st.subheader("Recommendation Summary")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown("**Current Regimen:**")
+                        st.info(old_regimen)
+                        st.markdown(f"Measured Peak: {measured_peak:.1f} mg/L")
+                        st.markdown(f"Measured Trough: {measured_trough:.1f} mg/L")
+                        st.markdown(f"Calculated AUC: {current_auc:.1f} mg·hr/L")
+                    with col2:
+                        st.markdown("**Recommended New Regimen:**")
+                        st.success(new_regimen)
+                        st.markdown(f"Predicted Peak: {best_rec['predicted_peak']:.1f} mg/L")
+                        st.markdown(f"Predicted Trough: {best_rec['predicted_trough']:.1f} mg/L")
+                        st.markdown(f"Predicted AUC: {best_rec['predicted_auc']:.1f} mg·hr/L")
+
+                    # Clinical interpretation
+                    interpreter = ClinicalInterpreter("Vancomycin", regimen, targets)
+                    current_levels_for_interp = { 'peak': cmax_ind, 'trough': cmin_ind, 'auc': current_auc }
+                    current_assessment, current_status = interpreter.assess_levels(current_levels_for_interp)
+
+                    predicted_new_levels = { 'peak': best_rec['predicted_peak'], 'trough': best_rec['predicted_trough'], 'auc': best_rec['predicted_auc'] }
+                    new_assessment, new_status = interpreter.assess_levels(predicted_new_levels)
+
+                    combined_assessment = [f"CURRENT REGIMEN: {old_regimen}"] + current_assessment + ["", f"RECOMMENDED REGIMEN: {new_regimen}"] + new_assessment
+                    recommendations = interpreter.generate_recommendations(new_status, patient_data['crcl'])
+
+                    if best_rec['dose'] != current_dose or best_rec['interval'] != current_interval:
+                         dose_change_pct = abs(best_rec['dose'] - current_dose) / current_dose * 100 if current_dose > 0 else float('inf')
+                         if dose_change_pct > 20:
+                              change_direction = "increased" if best_rec['dose'] > current_dose else "decreased"
+                              recommendations.insert(0, f"Dose {change_direction} by {dose_change_pct:.0f}% to achieve target AUC and trough")
+                         if best_rec['interval'] != current_interval:
+                              recommendations.insert(0, f"Interval changed from {current_interval}h to {best_rec['interval']}h based on renal function and target levels")
+
+                    st.markdown("### Clinical Interpretation")
+                    interpretation = interpreter.format_recommendations(combined_assessment, new_status, recommendations, patient_data)
+                    st.markdown(interpretation)
+
+                    # Generate report and print button
+                    report = UIComponents.generate_report(
+                        "Vancomycin", f"{regimen} therapy - Peak/Trough adjustment", patient_data,
+                        individual_params, measured_levels_display, # Use calculated levels for report consistency
+                        f"Changed from {old_regimen} to {new_regimen}", interpretation
+                    )
+                    UIComponents.create_print_button(report)
+
+                    # Visualize profiles
+                    st.markdown("### Predicted Concentration-Time Profiles")
+                    tab1, tab2 = st.tabs(["Current Regimen", "New Regimen"])
+                    with tab1:
+                        PKVisualizer.display_pk_chart(
+                            individual_params, current_levels_for_interp,
+                            {'tau': current_interval, 'infusion_duration': infusion_duration}, key_suffix="current_peaktrough"
+                        )
+                    with tab2:
+                         PKVisualizer.display_pk_chart(
+                            individual_params, predicted_new_levels,
+                            {'tau': best_rec['interval'], 'infusion_duration': infusion_duration}, key_suffix="new_peaktrough"
+                        )
+
+            # --- END OF TRY BLOCK ---
+            except ZeroDivisionError:
+                 st.error("Calculation Error: Division by zero occurred. This might be due to zero interval, infusion duration, or invalid PK parameters. Please check inputs.")
+            except ValueError as ve:
+                 st.error(f"Calculation Error: Invalid value encountered ({ve}). This might be due to taking the log of non-positive concentrations or issues with time inputs. Please check measured levels and times.")
+            except OverflowError as oe:
+                 st.error(f"Calculation Error: Numerical overflow occurred ({oe}). This might indicate extreme PK parameters or very long intervals/infusion times. Please check inputs.")
+            except Exception as e:
+                st.error(f"An unexpected error occurred during calculations: {str(e)}")
+                st.warning("Please double-check your input values (dose, interval, levels, times) and ensure they are clinically reasonable.")
