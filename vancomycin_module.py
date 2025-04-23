@@ -645,8 +645,8 @@ class VancomycinModule:
                         # Adjust score if trough is way out of range
                         if trough_ind < trough_min * 0.8 or trough_ind > trough_max * 1.2:
                             match_score += 1  # Significant penalty
-                        
-                       all_recommendations.append({
+
+ all_recommendations.append({
                             'interval': potential_interval,
                             'dose': practical_dose,
                             'predicted_auc': new_auc,
