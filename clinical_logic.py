@@ -261,3 +261,223 @@ class ClinicalInterpreter:
                 
             resample_date = datetime.now() + timedelta(days=days)
             return f"Recommend resampling in {days} days ({resample_date.strftime('%a, %b %d')})"
+            
+    def format_recommendations(self, assessment, status, recommendations, patient_data):
+        """
+        Format assessment and recommendations into a comprehensive clinical interpretation
+        
+        Parameters:
+        - assessment: List of assessment strings for each measured level
+        - status: Overall status (therapeutic, subtherapeutic, high, toxic)
+        - recommendations: List of clinical recommendations
+        - patient_data: Dictionary with patient information
+        
+        Returns:
+        - Formatted markdown string with clinical interpretation
+        """
+        # Store assessment and status for potential future use
+        self.assessment = assessment
+        self.status = status
+        
+        # Start building the formatted interpretation
+        formatted_text = "#### Assessment\n"
+        
+        # Add appropriate status icon
+        if status == "therapeutic":
+            formatted_text += "✅ **THERAPEUTIC LEVELS**\n\n"
+        elif status == "subtherapeutic":
+            formatted_text += "❌ **SUBTHERAPEUTIC LEVELS**\n\n"
+        elif status == "toxic":
+            formatted_text += "⚠️ **POTENTIALLY TOXIC LEVELS**\n\n"
+        else:  # high
+            formatted_text += "⚠️ **LEVELS ABOVE TARGET RANGE**\n\n"
+        
+        # Add each assessment point with appropriate formatting
+        for point in assessment:
+            if "BELOW" in point:
+                formatted_text += f"❌ {point}\n\n"
+            elif "ABOVE" in point:
+                formatted_text += f"⚠️ {point}\n\n"
+            else:
+                formatted_text += f"✅ {point}\n\n"
+        
+        # Add patient-specific context
+        formatted_text += f"**Patient Context:** {patient_data.get('gender', 'Unknown gender')}, {patient_data.get('age', 'Unknown age')} years old, "
+        formatted_text += f"weight {patient_data.get('weight', 'Unknown')} kg, CrCl {patient_data.get('crcl', 'Unknown'):.1f} mL/min"
+        
+        if patient_data.get('diagnosis'):
+            formatted_text += f", diagnosis: {patient_data.get('diagnosis')}"
+        formatted_text += "\n\n"
+        
+        # Add recommendations section
+        formatted_text += "#### Recommendations\n"
+        for i, rec in enumerate(recommendations):
+            # Add appropriate icon based on content
+            if "🚨" in rec:
+                # Already has an icon
+                formatted_text += f"{rec}\n\n"
+            elif "monitor" in rec.lower() or "watch" in rec.lower():
+                formatted_text += f"👁️ {rec}\n\n"
+            elif "increase" in rec.lower() or "higher" in rec.lower() or "raise" in rec.lower():
+                formatted_text += f"📈 {rec}\n\n"
+            elif "decrease" in rec.lower() or "lower" in rec.lower() or "reduce" in rec.lower():
+                formatted_text += f"📉 {rec}\n\n"
+            elif "resample" in rec.lower() or "follow-up" in rec.lower() or "next" in rec.lower():
+                formatted_text += f"📅 {rec}\n\n"
+            else:
+                formatted_text += f"• {rec}\n\n"
+        
+        # Add disclaimer
+        formatted_text += "---\n"
+        formatted_text += "*This clinical interpretation is provided for decision support only. "*
+        formatted_text += "Always use professional judgment when making clinical decisions.*"
+        
+        return formatted_text
+
+    def format_recommendations_for_regimen_change(self, old_regimen, old_levels, new_regimen, new_levels, patient_data):
+        """
+        Format recommendations for a regimen change with comparison between old and new regimens
+        
+        Parameters:
+        - old_regimen: String describing the old regimen
+        - old_levels: Dictionary of predicted levels with the old regimen
+        - new_regimen: String describing the new regimen
+        - new_levels: Dictionary of predicted levels with the new regimen
+        - patient_data: Dictionary with patient information
+        
+        Returns:
+        - Formatted markdown string with clinical interpretation
+        """
+        # Assess old and new regimens
+        old_assessment, old_status = self.assess_levels(old_levels)
+        new_assessment, new_status = self.assess_levels(new_levels)
+        
+        # Generate recommendations based on new regimen
+        recommendations = self.generate_recommendations(new_status, patient_data['crcl'])
+        
+        # Start building the formatted interpretation
+        formatted_text = "#### Comparison of Regimens\n"
+        
+        # Compare regimen status with appropriate icons
+        formatted_text += f"**Current Regimen ({old_regimen}):** "
+        if old_status == "therapeutic":
+            formatted_text += "✅ **THERAPEUTIC**\n"
+        elif old_status == "subtherapeutic":
+            formatted_text += "❌ **SUBTHERAPEUTIC**\n"
+        elif old_status == "toxic":
+            formatted_text += "⚠️ **POTENTIALLY TOXIC**\n"
+        else:  # high
+            formatted_text += "⚠️ **ABOVE TARGET RANGE**\n"
+        
+        formatted_text += f"**Recommended Regimen ({new_regimen}):** "
+        if new_status == "therapeutic":
+            formatted_text += "✅ **THERAPEUTIC**\n\n"
+        elif new_status == "subtherapeutic":
+            formatted_text += "❌ **SUBTHERAPEUTIC**\n\n"
+        elif new_status == "toxic":
+            formatted_text += "⚠️ **POTENTIALLY TOXIC**\n\n"
+        else:  # high
+            formatted_text += "⚠️ **ABOVE TARGET RANGE**\n\n"
+        
+        # Detailed level comparisons
+        formatted_text += "#### Detailed Comparison\n"
+        
+        # AUC comparison if available
+        if 'auc' in old_levels and 'auc' in new_levels:
+            auc_old = old_levels['auc']
+            auc_new = new_levels['auc']
+            auc_min = self.targets['auc']['min']
+            auc_max = self.targets['auc']['max']
+            
+            formatted_text += f"**AUC₂₄:** {auc_old:.1f} → {auc_new:.1f} mg·hr/L "
+            
+            if auc_old < auc_min and auc_new >= auc_min and auc_new <= auc_max:
+                formatted_text += "(❌ → ✅ Now within target range)\n"
+            elif auc_old > auc_max and auc_new >= auc_min and auc_new <= auc_max:
+                formatted_text += "(⚠️ → ✅ Now within target range)\n"
+            elif auc_old >= auc_min and auc_old <= auc_max and (auc_new < auc_min or auc_new > auc_max):
+                formatted_text += "(✅ → ❌/⚠️ Now outside target range)\n"
+            elif auc_old < auc_min and auc_new < auc_min:
+                if auc_new > auc_old:
+                    formatted_text += "(❌ → ❌ Still below target but improved)\n"
+                else:
+                    formatted_text += "(❌ → ❌ Still below target)\n"
+            elif auc_old > auc_max and auc_new > auc_max:
+                if auc_new < auc_old:
+                    formatted_text += "(⚠️ → ⚠️ Still above target but improved)\n"
+                else:
+                    formatted_text += "(⚠️ → ⚠️ Still above target)\n"
+            else:
+                if auc_new >= auc_min and auc_new <= auc_max:
+                    formatted_text += "(✅ Still within target range)\n"
+                else:
+                    formatted_text += "\n"
+        
+        # Trough comparison
+        trough_old = old_levels['trough']
+        trough_new = new_levels['trough']
+        trough_min = self.targets['trough']['min']
+        trough_max = self.targets['trough']['max']
+        
+        formatted_text += f"**Trough:** {trough_old:.1f} → {trough_new:.1f} mg/L "
+        
+        if trough_old < trough_min and trough_new >= trough_min and trough_new <= trough_max:
+            formatted_text += "(❌ → ✅ Now within target range)\n"
+        elif trough_old > trough_max and trough_new >= trough_min and trough_new <= trough_max:
+            formatted_text += "(⚠️ → ✅ Now within target range)\n"
+        elif trough_old >= trough_min and trough_old <= trough_max and (trough_new < trough_min or trough_new > trough_max):
+            formatted_text += "(✅ → ❌/⚠️ Now outside target range)\n"
+        elif trough_old < trough_min and trough_new < trough_min:
+            if trough_new > trough_old:
+                formatted_text += "(❌ → ❌ Still below target but improved)\n"
+            else:
+                formatted_text += "(❌ → ❌ Still below target)\n"
+        elif trough_old > trough_max and trough_new > trough_max:
+            if trough_new < trough_old:
+                formatted_text += "(⚠️ → ⚠️ Still above target but improved)\n"
+            else:
+                formatted_text += "(⚠️ → ⚠️ Still above target)\n"
+        else:
+            if trough_new >= trough_min and trough_new <= trough_max:
+                formatted_text += "(✅ Still within target range)\n"
+            else:
+                formatted_text += "\n"
+        
+        # Peak comparison
+        peak_old = old_levels['peak']
+        peak_new = new_levels['peak']
+        
+        formatted_text += f"**Peak:** {peak_old:.1f} → {peak_new:.1f} mg/L\n\n"
+        
+        # Add patient-specific context
+        formatted_text += f"**Patient Context:** {patient_data.get('gender', 'Unknown gender')}, {patient_data.get('age', 'Unknown age')} years old, "
+        formatted_text += f"weight {patient_data.get('weight', 'Unknown')} kg, CrCl {patient_data.get('crcl', 'Unknown'):.1f} mL/min"
+        
+        if patient_data.get('diagnosis'):
+            formatted_text += f", diagnosis: {patient_data.get('diagnosis')}"
+        formatted_text += "\n\n"
+        
+        # Add recommendations section
+        formatted_text += "#### Recommendations\n"
+        for i, rec in enumerate(recommendations):
+            # Add appropriate icon based on content
+            if "🚨" in rec:
+                # Already has an icon
+                formatted_text += f"{rec}\n\n"
+            elif "monitor" in rec.lower() or "watch" in rec.lower():
+                formatted_text += f"👁️ {rec}\n\n"
+            elif "increase" in rec.lower() or "higher" in rec.lower() or "raise" in rec.lower():
+                formatted_text += f"📈 {rec}\n\n"
+            elif "decrease" in rec.lower() or "lower" in rec.lower() or "reduce" in rec.lower():
+                formatted_text += f"📉 {rec}\n\n"
+            elif "resample" in rec.lower() or "follow-up" in rec.lower() or "next" in rec.lower():
+                formatted_text += f"📅 {rec}\n\n"
+            else:
+                formatted_text += f"• {rec}\n\n"
+        
+        # Add disclaimer
+        formatted_text += "---\n"
+        formatted_text += "*This clinical interpretation is provided for decision support only. "*
+        formatted_text += "Always use professional judgment when making clinical decisions.*"
+        
+        return formatted_text
