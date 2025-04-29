@@ -327,9 +327,9 @@ class ClinicalInterpreter:
             else:
                 formatted_text += f"• {rec}\n\n"
         
-        # Add disclaimer
+        # Add disclaimer - ensure this is on one clean line with proper string concatenation
         formatted_text += "---\n"
-        formatted_text += "*This clinical interpretation is provided for decision support only. "*
+        formatted_text += "*This clinical interpretation is provided for decision support only. "
         formatted_text += "Always use professional judgment when making clinical decisions.*"
         
         return formatted_text
@@ -475,9 +475,9 @@ class ClinicalInterpreter:
             else:
                 formatted_text += f"• {rec}\n\n"
         
-        # Add disclaimer
+        # Add disclaimer - ensure this is on one clean line with proper string concatenation
         formatted_text += "---\n"
-        formatted_text += "*This clinical interpretation is provided for decision support only. "*
+        formatted_text += "*This clinical interpretation is provided for decision support only. "
         formatted_text += "Always use professional judgment when making clinical decisions.*"
         
         return formatted_text
