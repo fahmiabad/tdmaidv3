@@ -921,7 +921,7 @@ class VancomycinModule:
             score = 0
             
             # 1. AUC match (0-10 points, 10 being perfect)
-            auc_target_mid = (targets['auc']['min'] + targets['auc']['max']) / 2
+            auc_target_mid = (targets['auc']['min'] + targets['AUC']['max']) / 2
             auc_deviation = abs(auc_ind - auc_target_mid) / auc_target_mid  # As percentage of mid target
             auc_score = max(0, 10 - (auc_deviation * 20))  # 0% deviation = 10 points, 50% deviation = 0 points
             
@@ -971,7 +971,7 @@ class VancomycinModule:
             # Adjust score based on critical factors
             
             # Critical penalty: AUC far out of range
-            if auc_ind < targets['auc']['min'] * 0.7 or auc_ind > targets['auc']['max'] * 1.3:
+            if auc_ind < targets['auc']['min'] * 0.7 or auc_ind > targets['AUC']['max'] * 1.3:
                 total_score -= 10  # Severe penalty for very poor AUC match
             
             # Critical penalty: Trough far out of range
