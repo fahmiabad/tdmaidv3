@@ -10,7 +10,7 @@ class ClinicalInterpreter:
         self.targets = targets
     
     def assess_levels(self, levels):
-        """Assess levels against target ranges and return status"""
+        """Assess levels against target ranges with clear status indicators"""
         assessment = []
         status = "therapeutic"
         
@@ -22,13 +22,13 @@ class ClinicalInterpreter:
                 auc_max = self.targets['auc']['max']
                 
                 if auc < auc_min:
-                    assessment.append(f"AUC₂₄ ({auc:.0f} mg·hr/L) is below target ({auc_min}-{auc_max} mg·hr/L)")
+                    assessment.append(f"BELOW THERAPEUTIC RANGE: AUC₂₄ ({auc:.0f} mg·hr/L) is below target ({auc_min}-{auc_max} mg·hr/L)")
                     status = "subtherapeutic"
                 elif auc > auc_max:
-                    assessment.append(f"AUC₂₄ ({auc:.0f} mg·hr/L) is above target ({auc_min}-{auc_max} mg·hr/L)")
+                    assessment.append(f"ABOVE THERAPEUTIC RANGE: AUC₂₄ ({auc:.0f} mg·hr/L) is above target ({auc_min}-{auc_max} mg·hr/L)")
                     status = "high"
                 else:
-                    assessment.append(f"AUC₂₄ ({auc:.0f} mg·hr/L) is within target range")
+                    assessment.append(f"WITHIN THERAPEUTIC RANGE: AUC₂₄ ({auc:.0f} mg·hr/L) is within target range ({auc_min}-{auc_max} mg·hr/L)")
             
             # Trough assessment for vancomycin
             if 'trough' in levels:
@@ -37,18 +37,18 @@ class ClinicalInterpreter:
                 trough_max = self.targets['trough']['max']
                 
                 if trough < trough_min:
-                    assessment.append(f"Trough ({trough:.1f} mg/L) is below target ({trough_min}-{trough_max} mg/L)")
+                    assessment.append(f"BELOW THERAPEUTIC RANGE: Trough ({trough:.1f} mg/L) is below target ({trough_min}-{trough_max} mg/L)")
                     # Only override status if AUC isn't already out of range
                     if status == "therapeutic":
                         status = "subtherapeutic"
                 elif trough > trough_max:
-                    assessment.append(f"Trough ({trough:.1f} mg/L) is above target ({trough_min}-{trough_max} mg/L)")
+                    assessment.append(f"ABOVE THERAPEUTIC RANGE: Trough ({trough:.1f} mg/L) is above target ({trough_min}-{trough_max} mg/L)")
                     status = "toxic" if status == "high" else "high"
                 else:
-                    assessment.append(f"Trough ({trough:.1f} mg/L) is within target range")
+                    assessment.append(f"WITHIN THERAPEUTIC RANGE: Trough ({trough:.1f} mg/L) is within target range ({trough_min}-{trough_max} mg/L)")
         
         else:  # Aminoglycosides
-            # Existing code for aminoglycosides assessment...
+            # Peak assessment with clear labeling
             peak_min = self.targets['peak']['min']
             peak_max = self.targets['peak']['max']
             trough_max = self.targets['trough']['max']
@@ -56,22 +56,22 @@ class ClinicalInterpreter:
             
             # Peak assessment
             if levels['peak'] < peak_min:
-                assessment.append(f"Peak ({levels['peak']:.1f} mg/L) is below target ({peak_min}-{peak_max} mg/L)")
+                assessment.append(f"BELOW THERAPEUTIC RANGE: Peak ({levels['peak']:.1f} mg/L) is below target ({peak_min}-{peak_max} mg/L)")
                 status = "subtherapeutic"
             elif levels['peak'] > peak_max:
-                assessment.append(f"Peak ({levels['peak']:.1f} mg/L) is above target ({peak_min}-{peak_max} mg/L)")
+                assessment.append(f"ABOVE THERAPEUTIC RANGE: Peak ({levels['peak']:.1f} mg/L) is above target ({peak_min}-{peak_max} mg/L)")
                 status = "high"
             else:
-                assessment.append(f"Peak ({levels['peak']:.1f} mg/L) is within target range")
+                assessment.append(f"WITHIN THERAPEUTIC RANGE: Peak ({levels['peak']:.1f} mg/L) is within target range ({peak_min}-{peak_max} mg/L)")
             
             # Trough assessment
             if levels['trough'] > trough_max:
-                assessment.append(f"Trough ({levels['trough']:.1f} mg/L) is above target (<{trough_max} mg/L)")
+                assessment.append(f"ABOVE THERAPEUTIC RANGE: Trough ({levels['trough']:.1f} mg/L) is above target (<{trough_max} mg/L)")
                 status = "toxic" if status == "high" else "high"
             elif levels['trough'] < trough_min:
-                assessment.append(f"Trough ({levels['trough']:.1f} mg/L) is below target ({trough_min}-{trough_max} mg/L)")
+                assessment.append(f"BELOW THERAPEUTIC RANGE: Trough ({levels['trough']:.1f} mg/L) is below target ({trough_min}-{trough_max} mg/L)")
             else:
-                assessment.append(f"Trough ({levels['trough']:.1f} mg/L) is within acceptable range")
+                assessment.append(f"WITHIN THERAPEUTIC RANGE: Trough ({levels['trough']:.1f} mg/L) is within acceptable range ({trough_min}-{trough_max} mg/L)")
         
         return assessment, status
     
@@ -114,114 +114,104 @@ class ClinicalInterpreter:
         # For other scenarios and drugs, if both regimens have the same status, prefer current regimen
         return False
     
-    def generate_recommendations(self, status, crcl):
-        """Generate clinical recommendations based on status"""
+    def generate_recommendations(self, status, crcl, indication=None):
+        """Generate more specific clinical recommendations based on status and patient factors"""
         recommendations = []
         
         if self.drug == "Vancomycin":
             if status == "subtherapeutic":
-                recommendations.append("Consider increasing dose to achieve target AUC")
+                recommendations.append("Increase dose to achieve target AUC and improve clinical efficacy")
+                
+                # Add specific recommendations based on severity of subtherapeutic level
+                if 'auc' in self.targets and hasattr(self, 'levels') and 'auc' in self.levels:
+                    auc = self.levels['auc']
+                    auc_min = self.targets['auc']['min']
+                    if auc < auc_min * 0.7:  # Severely low
+                        recommendations.append("🚨 Significantly subtherapeutic AUC may lead to treatment failure - consider loading dose")
+                
+                # Add indication-specific recommendations
+                if indication:
+                    if "meningitis" in indication.lower() or "cns" in indication.lower():
+                        recommendations.append("🚨 Critical: CNS infections require adequate drug levels for blood-brain barrier penetration")
+                    elif "endocarditis" in indication.lower():
+                        recommendations.append("🚨 Note: Endocarditis treatment requires consistent therapeutic levels")
+                
                 recommendations.append("Monitor for clinical response and signs of infection")
+            
             elif status == "high":
-                recommendations.append("Consider reducing dose to avoid toxicity")
-                recommendations.append("Monitor for signs of nephrotoxicity")
-                recommendations.append("Consider extending dosing interval if trough is elevated")
+                recommendations.append("Consider reducing dose to avoid toxicity while maintaining efficacy")
+                
+                if crcl < 60:
+                    recommendations.append("Monitor renal function closely due to reduced clearance")
+                    if crcl < 30:
+                        recommendations.append("🚨 High risk of nephrotoxicity with reduced renal function - consider extending interval")
+                
+                recommendations.append("Consider extending dosing interval if trough is significantly elevated")
+            
             elif status == "toxic":
-                recommendations.append("Reduce dose immediately")
-                recommendations.append("Monitor renal function closely")
-                recommendations.append("Consider holding next dose if trough is significantly elevated")
-            else:
+                recommendations.append("Reduce dose immediately to minimize risk of nephrotoxicity")
+                recommendations.append("🚨 Monitor renal function daily")
+                
+                if crcl < 50:
+                    recommendations.append("🚨 Consider holding next dose if trough >25 mg/L and renal function is declining")
+                
+                recommendations.append("Increase hydration if clinically appropriate")
+            
+            else:  # therapeutic
                 recommendations.append("Current regimen achieves therapeutic targets")
                 recommendations.append("Continue monitoring levels per protocol")
+                
+                if crcl < 60:
+                    recommendations.append("Continue monitoring renal function due to potential nephrotoxicity")
             
-            # Special considerations
+            # Special considerations for all statuses
             if crcl < 30:
-                recommendations.append("Close monitoring needed due to reduced renal function")
-                recommendations.append("Consider extending dosing interval")
+                recommendations.append("Close monitoring needed due to severely reduced renal function")
+                recommendations.append("Consider extending dosing interval to reduce toxicity risk")
             
             recommendations.append("Continue therapeutic drug monitoring with trough levels")
         
         else:  # Aminoglycosides
-            # Existing aminoglycosides recommendations...
             if status == "subtherapeutic":
-                recommendations.append("Increase dose to achieve therapeutic peak")
-                recommendations.append("Consider clinical efficacy and MIC")
+                recommendations.append("Increase dose to achieve therapeutic peak concentration")
+                
+                if 'peak' in self.targets and hasattr(self, 'levels') and 'peak' in self.levels:
+                    peak = self.levels['peak']
+                    peak_min = self.targets['peak']['min']
+                    if peak < peak_min * 0.7:  # Severely low
+                        recommendations.append("🚨 Significantly subtherapeutic peak may lead to treatment failure")
+                
+                recommendations.append("Consider clinical efficacy and pathogen MIC")
+            
             elif status == "high":
                 recommendations.append("Consider reducing dose or extending interval")
-                recommendations.append("Monitor for signs of toxicity")
+                recommendations.append("Monitor for signs of toxicity (vestibular, auditory, renal)")
+                
+                if crcl < 60:
+                    recommendations.append("🚨 Increased risk of toxicity with reduced renal function")
+            
             elif status == "toxic":
-                recommendations.append("Extend interval immediately")
-                recommendations.append("Monitor for nephrotoxicity and ototoxicity")
+                recommendations.append("Extend interval immediately to reduce toxicity risk")
+                recommendations.append("🚨 Monitor for nephrotoxicity and ototoxicity")
                 recommendations.append("Consider dose reduction if interval extension alone insufficient")
-            else:
+                
+                if crcl < 50:
+                    recommendations.append("🚨 Consider alternative antimicrobial agent due to high toxicity risk")
+            
+            else:  # therapeutic
                 recommendations.append("Current regimen achieves therapeutic targets")
                 recommendations.append("Continue monitoring per protocol")
             
             # Special considerations
-            if self.regimen == "extended_interval":
-                recommendations.append("Ensure adequate interval to allow trough <1 mg/L")
+            if self.regimen == "SDD" or self.regimen == "extended_interval":
+                recommendations.append("Ensure adequate interval to allow trough <1 mg/L before next dose")
             
             if crcl < 30:
-                recommendations.append("Increased risk of toxicity - close monitoring required")
+                recommendations.append("🚨 Increased risk of toxicity - close monitoring required")
                 recommendations.append("Consider alternative antimicrobial if possible")
         
         return recommendations
     
-    def format_recommendations_for_regimen_change(self, current_regimen, current_levels, recommended_regimen, recommended_levels, patient_data=None):
-        """Format recommendations when regimen is changed, with both current and recommended assessment"""
-        formatted = ""
-        
-        if patient_data:
-            formatted += f"""
-**Patient Information:**
-- Patient ID: {patient_data['patient_id']}
-- Ward: {patient_data['ward']}
-- Diagnosis: {patient_data.get('diagnosis', 'N/A')}
-- Current Regimen: {patient_data.get('current_regimen', 'N/A')}
-- Renal Function: {patient_data['renal_function']}
-
-"""
-        
-        # Assess current regimen
-        current_assessment, current_status = self.assess_levels(current_levels)
-        
-        # Assess recommended regimen
-        recommended_assessment, recommended_status = self.assess_levels(recommended_levels)
-        
-        formatted += f"""
-**Assessment:** {recommended_status.capitalize()}
-
-**Findings:**
-- CURRENT REGIMEN: {current_regimen}
-"""
-        for item in current_assessment:
-            formatted += f"- {item}\n"
-        
-        formatted += f"""
-- RECOMMENDED REGIMEN: {recommended_regimen}
-"""
-        for item in recommended_assessment:
-            formatted += f"- {item}\n"
-        
-        # Generate recommendations based on the NEW regimen's status
-        recommendations = self.generate_recommendations(recommended_status, patient_data.get('crcl', 80) if patient_data else 80)
-        
-        formatted += "\n**Recommendations:**\n"
-        
-        # Add explanation for dose change
-        if current_status == "subtherapeutic" and recommended_status in ["therapeutic", "high"]:
-            formatted += f"- Dose increased to achieve target AUC and trough\n"
-        elif current_status in ["high", "toxic"] and recommended_status in ["therapeutic", "subtherapeutic"]:
-            formatted += f"- Dose decreased to achieve target AUC and trough\n"
-        elif current_status == "therapeutic" and recommended_status == "therapeutic":
-            formatted += f"- Dose adjustment fine-tuned to optimize AUC\n"
-        
-        for item in recommendations:
-            formatted += f"- {item}\n"
-        
-        return formatted
-    
-    # Rest of the code remains the same...
     def recommend_resampling_date(self, current_interval, status, crcl):
         """Recommend when to resample based on regimen, status and renal function"""
         # Default sampling recommendation
@@ -271,50 +261,3 @@ class ClinicalInterpreter:
                 
             resample_date = datetime.now() + timedelta(days=days)
             return f"Recommend resampling in {days} days ({resample_date.strftime('%a, %b %d')})"
-    
-    def format_recommendations(self, assessment, status, recommendations, patient_data=None):
-        """Format recommendations in markdown with patient details"""
-        formatted = ""
-        
-        if patient_data:
-            formatted += f"""
-**Patient Information:**
-- Patient ID: {patient_data['patient_id']}
-- Ward: {patient_data['ward']}
-- Diagnosis: {patient_data.get('diagnosis', 'N/A')}
-- Current Regimen: {patient_data.get('current_regimen', 'N/A')}
-- Renal Function: {patient_data['renal_function']}
-
-"""
-        
-        formatted += f"""
-**Assessment:** {status.capitalize()}
-
-**Findings:**
-"""
-        for item in assessment:
-            formatted += f"- {item}\n"
-        
-        formatted += "\n**Recommendations:**\n"
-        for item in recommendations:
-            formatted += f"- {item}\n"
-        
-        return formatted
-    
-    def generate_llm_interpretation(self, pk_params, levels, recommendations, patient_data=None):
-        """Generate detailed interpretation using LLM"""
-        # Check if we have API key
-        api_key = os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY", None)
-        
-        if not api_key:
-            return "Note: LLM interpretation not available (API key not configured)"
-        
-        # This is a placeholder for LLM integration
-        # In production, you would integrate with OpenAI API here
-        assessment, status = self.assess_levels(levels)
-        return self.format_recommendations(
-            assessment,
-            status,
-            self.generate_recommendations(status, pk_params.get('crcl', 80)),
-            patient_data
-        )
