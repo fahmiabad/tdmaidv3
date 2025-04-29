@@ -38,6 +38,9 @@ class ClinicalInterpreter:
                 
                 if trough < trough_min:
                     assessment.append(f"Trough ({trough:.1f} mg/L) is below target ({trough_min}-{trough_max} mg/L)")
+                    # Only override status if AUC isn't already out of range
+                    if status == "therapeutic":
+                        status = "subtherapeutic"
                 elif trough > trough_max:
                     assessment.append(f"Trough ({trough:.1f} mg/L) is above target ({trough_min}-{trough_max} mg/L)")
                     status = "toxic" if status == "high" else "high"
@@ -45,6 +48,7 @@ class ClinicalInterpreter:
                     assessment.append(f"Trough ({trough:.1f} mg/L) is within target range")
         
         else:  # Aminoglycosides
+            # Existing code for aminoglycosides assessment...
             peak_min = self.targets['peak']['min']
             peak_max = self.targets['peak']['max']
             trough_max = self.targets['trough']['max']
@@ -70,6 +74,45 @@ class ClinicalInterpreter:
                 assessment.append(f"Trough ({levels['trough']:.1f} mg/L) is within acceptable range")
         
         return assessment, status
+    
+    def evaluate_proposed_regimen(self, current_levels, proposed_levels):
+        """
+        Evaluate if a proposed regimen improves therapeutic outcomes
+        Returns True if the proposed regimen is better than the current one
+        """
+        current_assessment, current_status = self.assess_levels(current_levels)
+        proposed_assessment, proposed_status = self.assess_levels(proposed_levels)
+        
+        # Define status priority (worst to best)
+        status_priority = {
+            "toxic": 0,
+            "high": 1,
+            "subtherapeutic": 2,
+            "therapeutic": 3
+        }
+        
+        # If proposed status is better than current, approve change
+        if status_priority[proposed_status] > status_priority[current_status]:
+            return True
+            
+        # If proposed status is worse than current, reject change
+        if status_priority[proposed_status] < status_priority[current_status]:
+            return False
+            
+        # If status is the same, need more detailed analysis
+        if self.drug == "Vancomycin" and 'auc' in current_levels and 'auc' in proposed_levels:
+            # For vancomycin, prioritize AUC optimization
+            auc_target_mid = (self.targets['auc']['min'] + self.targets['auc']['max']) / 2
+            
+            # Calculate how close each regimen gets to the middle of the AUC target range
+            current_auc_deviation = abs(current_levels['auc'] - auc_target_mid)
+            proposed_auc_deviation = abs(proposed_levels['auc'] - auc_target_mid)
+            
+            # If proposed gets us closer to target midpoint, approve change
+            return proposed_auc_deviation < current_auc_deviation
+            
+        # For other scenarios and drugs, if both regimens have the same status, prefer current regimen
+        return False
     
     def generate_recommendations(self, status, crcl):
         """Generate clinical recommendations based on status"""
@@ -99,6 +142,7 @@ class ClinicalInterpreter:
             recommendations.append("Continue therapeutic drug monitoring with trough levels")
         
         else:  # Aminoglycosides
+            # Existing aminoglycosides recommendations...
             if status == "subtherapeutic":
                 recommendations.append("Increase dose to achieve therapeutic peak")
                 recommendations.append("Consider clinical efficacy and MIC")
@@ -123,6 +167,61 @@ class ClinicalInterpreter:
         
         return recommendations
     
+    def format_recommendations_for_regimen_change(self, current_regimen, current_levels, recommended_regimen, recommended_levels, patient_data=None):
+        """Format recommendations when regimen is changed, with both current and recommended assessment"""
+        formatted = ""
+        
+        if patient_data:
+            formatted += f"""
+**Patient Information:**
+- Patient ID: {patient_data['patient_id']}
+- Ward: {patient_data['ward']}
+- Diagnosis: {patient_data.get('diagnosis', 'N/A')}
+- Current Regimen: {patient_data.get('current_regimen', 'N/A')}
+- Renal Function: {patient_data['renal_function']}
+
+"""
+        
+        # Assess current regimen
+        current_assessment, current_status = self.assess_levels(current_levels)
+        
+        # Assess recommended regimen
+        recommended_assessment, recommended_status = self.assess_levels(recommended_levels)
+        
+        formatted += f"""
+**Assessment:** {recommended_status.capitalize()}
+
+**Findings:**
+- CURRENT REGIMEN: {current_regimen}
+"""
+        for item in current_assessment:
+            formatted += f"- {item}\n"
+        
+        formatted += f"""
+- RECOMMENDED REGIMEN: {recommended_regimen}
+"""
+        for item in recommended_assessment:
+            formatted += f"- {item}\n"
+        
+        # Generate recommendations based on the NEW regimen's status
+        recommendations = self.generate_recommendations(recommended_status, patient_data.get('crcl', 80) if patient_data else 80)
+        
+        formatted += "\n**Recommendations:**\n"
+        
+        # Add explanation for dose change
+        if current_status == "subtherapeutic" and recommended_status in ["therapeutic", "high"]:
+            formatted += f"- Dose increased to achieve target AUC and trough\n"
+        elif current_status in ["high", "toxic"] and recommended_status in ["therapeutic", "subtherapeutic"]:
+            formatted += f"- Dose decreased to achieve target AUC and trough\n"
+        elif current_status == "therapeutic" and recommended_status == "therapeutic":
+            formatted += f"- Dose adjustment fine-tuned to optimize AUC\n"
+        
+        for item in recommendations:
+            formatted += f"- {item}\n"
+        
+        return formatted
+    
+    # Rest of the code remains the same...
     def recommend_resampling_date(self, current_interval, status, crcl):
         """Recommend when to resample based on regimen, status and renal function"""
         # Default sampling recommendation
