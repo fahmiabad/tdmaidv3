@@ -1,6 +1,7 @@
 # clinical_logic.py
 import streamlit as st
 import os
+from datetime import datetime, timedelta
 
 class ClinicalInterpreter:
     def __init__(self, drug, regimen, targets):
@@ -121,6 +122,56 @@ class ClinicalInterpreter:
                 recommendations.append("Consider alternative antimicrobial if possible")
         
         return recommendations
+    
+    def recommend_resampling_date(self, current_interval, status, crcl):
+        """Recommend when to resample based on regimen, status and renal function"""
+        # Default sampling recommendation
+        if self.drug == "Vancomycin":
+            if status == "therapeutic":
+                # For stable patients on target
+                if crcl >= 60:
+                    days = 7  # Weekly for stable patients with good renal function
+                elif crcl >= 30:
+                    days = 5  # Twice weekly for moderate renal impairment
+                else:
+                    days = 3  # More frequent for severe renal impairment
+            else:
+                # For patients not on target, check sooner
+                if crcl >= 60:
+                    days = 3  # Sooner for out-of-range with good renal function
+                elif crcl >= 30:
+                    days = 2  # Very soon for moderate renal impairment
+                else:
+                    days = 1  # Next day for severe renal impairment
+                    
+            # For extended intervals, make sure we capture steady state
+            if current_interval >= 24:
+                # Ensure we have at least 3-4 half-lives before resampling
+                doses_before_resampling = max(3, days * 24 // current_interval)
+                days = (doses_before_resampling * current_interval) // 24
+                
+            # Calculate the actual date
+            resample_date = datetime.now() + timedelta(days=days)
+            
+            # Format the string based on time frame
+            if days <= 1:
+                return f"Recommend resampling tomorrow ({resample_date.strftime('%a, %b %d')})"
+            elif days <= 3:
+                return f"Recommend resampling in {days} days ({resample_date.strftime('%a, %b %d')})"
+            else:
+                return f"Recommend resampling in {days} days ({resample_date.strftime('%a, %b %d')}) after reaching steady state"
+        else:
+            # For aminoglycosides - typically more frequent monitoring
+            if status == "therapeutic":
+                if crcl >= 60:
+                    days = 3
+                else:
+                    days = 2
+            else:
+                days = 1
+                
+            resample_date = datetime.now() + timedelta(days=days)
+            return f"Recommend resampling in {days} days ({resample_date.strftime('%a, %b %d')})"
     
     def format_recommendations(self, assessment, status, recommendations, patient_data=None):
         """Format recommendations in markdown with patient details"""
