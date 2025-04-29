@@ -8,14 +8,18 @@ class ClinicalInterpreter:
         self.drug = drug
         self.regimen = regimen
         self.targets = targets
+        self.levels = {}  # Initialize levels as empty dict
     
     def assess_levels(self, levels):
         """Assess levels against target ranges with clear status indicators"""
         assessment = []
         status = "therapeutic"
         
+        # Store levels for use in other methods
+        self.levels = levels
+        
         if self.drug == "Vancomycin":
-            # AUC assessment for vancomycin
+            # AUC assessment for vancomycin - ONLY if AUC data is available
             if 'auc' in levels and 'auc' in self.targets:
                 auc = levels['auc']
                 auc_min = self.targets['auc']['min']
@@ -100,7 +104,7 @@ class ClinicalInterpreter:
             return False
             
         # If status is the same, need more detailed analysis
-        if self.drug == "Vancomycin" and 'auc' in current_levels and 'auc' in proposed_levels:
+        if self.drug == "Vancomycin" and 'auc' in current_levels and 'auc' in proposed_levels and 'auc' in self.targets:
             # For vancomycin, prioritize AUC optimization
             auc_target_mid = (self.targets['auc']['min'] + self.targets['auc']['max']) / 2
             
@@ -110,6 +114,14 @@ class ClinicalInterpreter:
             
             # If proposed gets us closer to target midpoint, approve change
             return proposed_auc_deviation < current_auc_deviation
+        elif self.drug == "Vancomycin" and ('auc' not in current_levels or 'auc' not in proposed_levels):
+            # In trough-only mode, compare trough values to target midpoint
+            trough_target_mid = (self.targets['trough']['min'] + self.targets['trough']['max']) / 2
+            
+            current_trough_deviation = abs(current_levels['trough'] - trough_target_mid)
+            proposed_trough_deviation = abs(proposed_levels['trough'] - trough_target_mid)
+            
+            return proposed_trough_deviation < current_trough_deviation
             
         # For other scenarios and drugs, if both regimens have the same status, prefer current regimen
         return False
@@ -120,14 +132,20 @@ class ClinicalInterpreter:
         
         if self.drug == "Vancomycin":
             if status == "subtherapeutic":
-                recommendations.append("Increase dose to achieve target AUC and improve clinical efficacy")
+                recommendations.append("Increase dose to achieve target levels and improve clinical efficacy")
                 
                 # Add specific recommendations based on severity of subtherapeutic level
+                # ONLY check for AUC if it's available in levels and targets
                 if 'auc' in self.targets and hasattr(self, 'levels') and 'auc' in self.levels:
                     auc = self.levels['auc']
                     auc_min = self.targets['auc']['min']
                     if auc < auc_min * 0.7:  # Severely low
                         recommendations.append("🚨 Significantly subtherapeutic AUC may lead to treatment failure - consider loading dose")
+                elif 'trough' in self.levels:  # Trough-only mode
+                    trough = self.levels['trough']
+                    trough_min = self.targets['trough']['min']
+                    if trough < trough_min * 0.7:  # Severely low trough
+                        recommendations.append("🚨 Significantly subtherapeutic trough may lead to treatment failure - consider loading dose")
                 
                 # Add indication-specific recommendations
                 if indication:
@@ -169,7 +187,11 @@ class ClinicalInterpreter:
                 recommendations.append("Close monitoring needed due to severely reduced renal function")
                 recommendations.append("Consider extending dosing interval to reduce toxicity risk")
             
-            recommendations.append("Continue therapeutic drug monitoring with trough levels")
+            # Check which monitoring approach is being used
+            if 'auc' in self.targets and 'auc' in self.levels:
+                recommendations.append("Continue therapeutic drug monitoring with AUC-based approach")
+            else:
+                recommendations.append("Continue therapeutic drug monitoring with trough levels")
         
         else:  # Aminoglycosides
             if status == "subtherapeutic":
@@ -327,7 +349,7 @@ class ClinicalInterpreter:
             else:
                 formatted_text += f"• {rec}\n\n"
         
-        # Add disclaimer - ensure this is on one clean line with proper string concatenation
+        # Add disclaimer
         formatted_text += "---\n"
         formatted_text += "*This clinical interpretation is provided for decision support only. "
         formatted_text += "Always use professional judgment when making clinical decisions.*"
@@ -382,7 +404,7 @@ class ClinicalInterpreter:
         # Detailed level comparisons
         formatted_text += "#### Detailed Comparison\n"
         
-        # AUC comparison if available
+        # AUC comparison if available - ONLY if present in both old and new levels
         if 'auc' in old_levels and 'auc' in new_levels:
             auc_old = old_levels['auc']
             auc_new = new_levels['auc']
@@ -413,41 +435,45 @@ class ClinicalInterpreter:
                 else:
                     formatted_text += "\n"
         
-        # Trough comparison
-        trough_old = old_levels['trough']
-        trough_new = new_levels['trough']
-        trough_min = self.targets['trough']['min']
-        trough_max = self.targets['trough']['max']
-        
-        formatted_text += f"**Trough:** {trough_old:.1f} → {trough_new:.1f} mg/L "
-        
-        if trough_old < trough_min and trough_new >= trough_min and trough_new <= trough_max:
-            formatted_text += "(❌ → ✅ Now within target range)\n"
-        elif trough_old > trough_max and trough_new >= trough_min and trough_new <= trough_max:
-            formatted_text += "(⚠️ → ✅ Now within target range)\n"
-        elif trough_old >= trough_min and trough_old <= trough_max and (trough_new < trough_min or trough_new > trough_max):
-            formatted_text += "(✅ → ❌/⚠️ Now outside target range)\n"
-        elif trough_old < trough_min and trough_new < trough_min:
-            if trough_new > trough_old:
-                formatted_text += "(❌ → ❌ Still below target but improved)\n"
+        # Trough comparison - will always be present
+        if 'trough' in old_levels and 'trough' in new_levels:
+            trough_old = old_levels['trough']
+            trough_new = new_levels['trough']
+            trough_min = self.targets['trough']['min']
+            trough_max = self.targets['trough']['max']
+            
+            formatted_text += f"**Trough:** {trough_old:.1f} → {trough_new:.1f} mg/L "
+            
+            if trough_old < trough_min and trough_new >= trough_min and trough_new <= trough_max:
+                formatted_text += "(❌ → ✅ Now within target range)\n"
+            elif trough_old > trough_max and trough_new >= trough_min and trough_new <= trough_max:
+                formatted_text += "(⚠️ → ✅ Now within target range)\n"
+            elif trough_old >= trough_min and trough_old <= trough_max and (trough_new < trough_min or trough_new > trough_max):
+                formatted_text += "(✅ → ❌/⚠️ Now outside target range)\n"
+            elif trough_old < trough_min and trough_new < trough_min:
+                if trough_new > trough_old:
+                    formatted_text += "(❌ → ❌ Still below target but improved)\n"
+                else:
+                    formatted_text += "(❌ → ❌ Still below target)\n"
+            elif trough_old > trough_max and trough_new > trough_max:
+                if trough_new < trough_old:
+                    formatted_text += "(⚠️ → ⚠️ Still above target but improved)\n"
+                else:
+                    formatted_text += "(⚠️ → ⚠️ Still above target)\n"
             else:
-                formatted_text += "(❌ → ❌ Still below target)\n"
-        elif trough_old > trough_max and trough_new > trough_max:
-            if trough_new < trough_old:
-                formatted_text += "(⚠️ → ⚠️ Still above target but improved)\n"
-            else:
-                formatted_text += "(⚠️ → ⚠️ Still above target)\n"
+                if trough_new >= trough_min and trough_new <= trough_max:
+                    formatted_text += "(✅ Still within target range)\n"
+                else:
+                    formatted_text += "\n"
+        
+        # Peak comparison - only if we're dealing with peaks
+        if 'peak' in old_levels and 'peak' in new_levels:
+            peak_old = old_levels['peak']
+            peak_new = new_levels['peak']
+            
+            formatted_text += f"**Peak:** {peak_old:.1f} → {peak_new:.1f} mg/L\n\n"
         else:
-            if trough_new >= trough_min and trough_new <= trough_max:
-                formatted_text += "(✅ Still within target range)\n"
-            else:
-                formatted_text += "\n"
-        
-        # Peak comparison
-        peak_old = old_levels['peak']
-        peak_new = new_levels['peak']
-        
-        formatted_text += f"**Peak:** {peak_old:.1f} → {peak_new:.1f} mg/L\n\n"
+            formatted_text += "\n"  # Add extra newline if no peak comparison
         
         # Add patient-specific context
         formatted_text += f"**Patient Context:** {patient_data.get('gender', 'Unknown gender')}, {patient_data.get('age', 'Unknown age')} years old, "
@@ -475,7 +501,7 @@ class ClinicalInterpreter:
             else:
                 formatted_text += f"• {rec}\n\n"
         
-        # Add disclaimer - ensure this is on one clean line with proper string concatenation
+        # Add disclaimer
         formatted_text += "---\n"
         formatted_text += "*This clinical interpretation is provided for decision support only. "
         formatted_text += "Always use professional judgment when making clinical decisions.*"
