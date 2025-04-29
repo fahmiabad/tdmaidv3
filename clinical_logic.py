@@ -20,10 +20,10 @@ class ClinicalInterpreter:
         
         if self.drug == "Vancomycin":
             # AUC assessment for vancomycin - ONLY if AUC data is available
-            if 'auc' in levels and 'auc' in self.targets:
+            if 'auc' in levels and 'AUC' in self.targets:
                 auc = levels['auc']
-                auc_min = self.targets['auc']['min']
-                auc_max = self.targets['auc']['max']
+                auc_min = self.targets['AUC']['min']
+                auc_max = self.targets['AUC']['max']
                 
                 if auc < auc_min:
                     assessment.append(f"BELOW THERAPEUTIC RANGE: AUC₂₄ ({auc:.0f} mg·hr/L) is below target ({auc_min}-{auc_max} mg·hr/L)")
@@ -104,9 +104,9 @@ class ClinicalInterpreter:
             return False
             
         # If status is the same, need more detailed analysis
-        if self.drug == "Vancomycin" and 'auc' in current_levels and 'auc' in proposed_levels and 'auc' in self.targets:
+        if self.drug == "Vancomycin" and 'auc' in current_levels and 'auc' in proposed_levels and 'AUC' in self.targets:
             # For vancomycin, prioritize AUC optimization
-            auc_target_mid = (self.targets['auc']['min'] + self.targets['auc']['max']) / 2
+            auc_target_mid = (self.targets['AUC']['min'] + self.targets['AUC']['max']) / 2
             
             # Calculate how close each regimen gets to the middle of the AUC target range
             current_auc_deviation = abs(current_levels['auc'] - auc_target_mid)
@@ -136,9 +136,9 @@ class ClinicalInterpreter:
                 
                 # Add specific recommendations based on severity of subtherapeutic level
                 # ONLY check for AUC if it's available in levels and targets
-                if 'auc' in self.targets and hasattr(self, 'levels') and 'auc' in self.levels:
+                if 'AUC' in self.targets and hasattr(self, 'levels') and 'auc' in self.levels:
                     auc = self.levels['auc']
-                    auc_min = self.targets['auc']['min']
+                    auc_min = self.targets['AUC']['min']
                     if auc < auc_min * 0.7:  # Severely low
                         recommendations.append("🚨 Significantly subtherapeutic AUC may lead to treatment failure - consider loading dose")
                 elif 'trough' in self.levels:  # Trough-only mode
@@ -188,7 +188,7 @@ class ClinicalInterpreter:
                 recommendations.append("Consider extending dosing interval to reduce toxicity risk")
             
             # Check which monitoring approach is being used
-            if 'auc' in self.targets and 'auc' in self.levels:
+            if 'AUC' in self.targets and 'auc' in self.levels:
                 recommendations.append("Continue therapeutic drug monitoring with AUC-based approach")
             else:
                 recommendations.append("Continue therapeutic drug monitoring with trough levels")
@@ -405,11 +405,11 @@ class ClinicalInterpreter:
         formatted_text += "#### Detailed Comparison\n"
         
         # AUC comparison if available - ONLY if present in both old and new levels
-        if 'auc' in old_levels and 'auc' in new_levels:
+        if 'auc' in old_levels and 'auc' in new_levels and 'AUC' in self.targets:
             auc_old = old_levels['auc']
             auc_new = new_levels['auc']
-            auc_min = self.targets['auc']['min']
-            auc_max = self.targets['auc']['max']
+            auc_min = self.targets['AUC']['min']
+            auc_max = self.targets['AUC']['max']
             
             formatted_text += f"**AUC₂₄:** {auc_old:.1f} → {auc_new:.1f} mg·hr/L "
             
