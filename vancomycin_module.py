@@ -420,8 +420,8 @@ class VancomycinModule:
                         # Display current levels with appropriate indicators
                         for parameter, value in measured_levels.items():
                             if parameter == 'auc':
-                                auc_min = targets['auc']['min']
-                                auc_max = targets['auc']['max']
+                                auc_min = targets['AUC']['min']
+                                auc_max = targets['AUC']['max']
                                 if value < auc_min:
                                     st.markdown(f"❌ AUC₂₄: {value:.1f} mg·hr/L (BELOW target)")
                                 elif value > auc_max:
@@ -450,8 +450,8 @@ class VancomycinModule:
                         predicted_new_levels = best_regimen['predicted_levels']
                         for parameter, value in predicted_new_levels.items():
                             if parameter == 'auc':
-                                auc_min = targets['auc']['min']
-                                auc_max = targets['auc']['max']
+                                auc_min = targets['AUC']['min']
+                                auc_max = targets['AUC']['max']
                                 if value < auc_min:
                                     st.markdown(f"❌ AUC₂₄: {value:.1f} mg·hr/L (BELOW target)")
                                 elif value > auc_max:
@@ -731,8 +731,8 @@ class VancomycinModule:
                         # Display current levels with appropriate indicators
                         for parameter, value in measured_levels.items():
                             if parameter == 'auc':
-                                auc_min = targets['auc']['min']
-                                auc_max = targets['auc']['max']
+                                auc_min = targets['AUC']['min']
+                                auc_max = targets['AUC']['max']
                                 if value < auc_min:
                                     st.markdown(f"❌ AUC₂₄: {value:.1f} mg·hr/L (BELOW target)")
                                 elif value > auc_max:
@@ -761,8 +761,8 @@ class VancomycinModule:
                         predicted_new_levels = best_regimen['predicted_levels']
                         for parameter, value in predicted_new_levels.items():
                             if parameter == 'auc':
-                                auc_min = targets['auc']['min']
-                                auc_max = targets['auc']['max']
+                                auc_min = targets['AUC']['min']
+                                auc_max = targets['AUC']['max']
                                 if value < auc_min:
                                     st.markdown(f"❌ AUC₂₄: {value:.1f} mg·hr/L (BELOW target)")
                                 elif value > auc_max:
@@ -853,212 +853,3 @@ class VancomycinModule:
             except Exception as e:
                 st.error(f"An error occurred during calculations: {str(e)}")
                 st.info("Please verify that all input values are clinically reasonable.")
-                
-    @staticmethod
-    def _find_optimal_regimen(calculator, pk_params, target_auc, targets, interval_options, crcl, infusion_duration):
-        """Find the optimal dosing regimen based on patient factors and target levels"""
-        ke = pk_params['ke']
-        vd = pk_params['vd']
-        cl = pk_params['cl']
-        
-        best_regimen = None
-        best_score = float('-inf')
-        
-        # Filter interval options based on renal function
-        suitable_intervals = []
-        
-        if crcl < 20:  # Severe renal impairment
-            suitable_intervals = [i for i in interval_options if i >= 24]
-        elif crcl < 30:  # Moderate to severe impairment
-            suitable_intervals = [i for i in interval_options if i >= 12]
-        elif crcl < 60:  # Mild to moderate impairment
-            suitable_intervals = [i for i in interval_options if i >= 8]
-        else:  # Normal renal function
-            suitable_intervals = interval_options
-            
-        # If no suitable intervals found (unlikely), use all options
-        if not suitable_intervals:
-            suitable_intervals = interval_options
-        
-        # Generate clinical reasoning
-        reasoning = f"""**Clinical Factors Considered:**
-- Patient's renal function: CrCl = {crcl:.1f} mL/min
-- Target AUC₂₄: {target_auc} mg·hr/L
-- Target trough: {targets['trough']['min']}-{targets['trough']['max']} mg/L
-- Individual PK parameters: Ke = {ke:.4f} hr⁻¹, t½ = {0.693/ke:.1f} hr, Vd = {vd:.1f} L
-
-**Regimen Selection Process:**
-"""
-        
-        # Evaluate each interval
-        for interval in suitable_intervals:
-            # Calculate dose needed to achieve target AUC
-            target_daily_dose = target_auc * cl
-            dose_per_interval = target_daily_dose / (24 / interval)
-            practical_dose = calculator._round_dose(dose_per_interval)
-            
-            # Predict levels with this dose
-            # Formula for Cmax at steady state
-            term1 = (practical_dose / (vd * ke * infusion_duration)) if (vd * ke * infusion_duration) > 1e-9 else 0
-            term2_num = (1 - math.exp(-ke * infusion_duration)) if (ke * infusion_duration) < 700 else 1
-            term2_den = (1 - math.exp(-ke * interval)) if (ke * interval) < 700 else 1
-            peak_ind = term1 * term2_num / term2_den if term2_den > 1e-9 else 0
-            
-            # Formula for Cmin at steady state
-            trough_ind = peak_ind * math.exp(-ke * (interval - infusion_duration)) if (ke * (interval - infusion_duration)) < 700 else 0
-            
-            # Calculate AUC
-            auc_ind = calculator.calculate_vancomycin_auc(
-                peak_ind,
-                trough_ind,
-                ke,
-                interval,
-                infusion_duration
-            )
-            
-            # Score this regimen
-            # Initialize score - higher is better
-            score = 0
-            
-            # 1. AUC match (0-10 points, 10 being perfect)
-            auc_target_mid = (targets['auc']['min'] + targets['AUC']['max']) / 2
-            auc_deviation = abs(auc_ind - auc_target_mid) / auc_target_mid  # As percentage of mid target
-            auc_score = max(0, 10 - (auc_deviation * 20))  # 0% deviation = 10 points, 50% deviation = 0 points
-            
-            # 2. Trough match (0-10 points)
-            trough_min = targets['trough']['min']
-            trough_max = targets['trough']['max']
-            
-            if trough_ind < trough_min:
-                # Below min - score based on how close to min
-                trough_deviation = (trough_min - trough_ind) / trough_min
-                trough_score = max(0, 8 - (trough_deviation * 15))  # Small deviation still gets points
-            elif trough_ind > trough_max:
-                # Above max - score based on how close to max
-                trough_deviation = (trough_ind - trough_max) / trough_max
-                trough_score = max(0, 7 - (trough_deviation * 15))  # Penalize high troughs more
-            else:
-                # Within range - score based on how close to middle of range
-                trough_target_mid = (trough_min + trough_max) / 2
-                trough_deviation = abs(trough_ind - trough_target_mid) / (trough_max - trough_min) * 2  # As percentage of range
-                trough_score = 10 - (trough_deviation * 5)  # 0% deviation = 10 points, 100% deviation = 5 points
-            
-            # 3. Renal function appropriateness (0-5 points)
-            # More points for longer intervals with worse renal function
-            if crcl < 30 and interval >= 24:
-                renal_score = 5  # Long interval for poor renal function = good
-            elif crcl < 30 and interval < 12:
-                renal_score = 0  # Short interval for poor renal function = bad
-            elif crcl > 60 and interval <= 12:
-                renal_score = 5  # Short interval for good renal function = good
-            elif crcl > 60 and interval > 24:
-                renal_score = 1  # Long interval for good renal function = unnecessary
-            else:
-                renal_score = 3  # Middle ground
-            
-            # 4. Practical considerations (0-5 points)
-            # Prefer standard intervals (8, 12, 24) for ease of administration
-            if interval in [8, 12, 24]:
-                practical_score = 5  # Standard intervals
-            elif interval in [6, 36]:
-                practical_score = 3  # Less common but still practical
-            else:
-                practical_score = 1  # Less common intervals
-            
-            # Total score (max 30 points)
-            total_score = auc_score + trough_score + renal_score + practical_score
-            
-            # Adjust score based on critical factors
-            
-            # Critical penalty: AUC far out of range
-            if auc_ind < targets['auc']['min'] * 0.7 or auc_ind > targets['AUC']['max'] * 1.3:
-                total_score -= 10  # Severe penalty for very poor AUC match
-            
-            # Critical penalty: Trough far out of range
-            if trough_ind < trough_min * 0.5 or trough_ind > trough_max * 1.5:
-                total_score -= 15  # Severe penalty for very poor trough match
-            
-            # Store predicted levels
-            predicted_levels = {
-                'peak': peak_ind,
-                'trough': trough_ind,
-                'auc': auc_ind
-            }
-            
-            # Add this interval's evaluation to reasoning
-            reasoning += f"""
-- {interval}h interval with {practical_dose}mg:
-  * Predicted AUC: {auc_ind:.1f} mg·hr/L ({auc_score:.1f}/10 points)
-  * Predicted trough: {trough_ind:.1f} mg/L ({trough_score:.1f}/10 points)
-  * Renal function match: {renal_score}/5 points
-  * Practical considerations: {practical_score}/5 points
-  * Total score: {total_score:.1f}/30 points
-"""
-            
-            # Update best if this is better
-            if total_score > best_score:
-                best_score = total_score
-                best_regimen = {
-                    'interval': interval,
-                    'dose': practical_dose,
-                    'predicted_levels': predicted_levels,
-                    'score': total_score,
-                    'reasoning': ""  # Will be updated after all intervals are evaluated
-                }
-        
-        # If we found a best regimen, complete the reasoning
-        if best_regimen:
-            # Add the decision to reasoning
-            reasoning += f"""
-**Selected Regimen: {best_regimen['dose']} mg every {best_regimen['interval']} hours**
-
-This regimen was selected because it:
-- Provides optimal AUC₂₄ ({best_regimen['predicted_levels']['auc']:.1f} mg·hr/L)
-- {"Achieves target trough levels" if trough_min <= best_regimen['predicted_levels']['trough'] <= trough_max else "Provides closest achievable trough level"}
-- Is appropriate for the patient's renal function
-- Uses a practical dosing interval for clinical workflow
-"""
-            
-            # Add any specific notes based on the selected regimen
-            if best_regimen['predicted_levels']['auc'] < targets['auc']['min']:
-                reasoning += "\n**Note:** Despite optimization, target AUC cannot be fully achieved without exceeding safe peak levels. Close monitoring recommended."
-                
-            if best_regimen['predicted_levels']['trough'] < targets['trough']['min']:
-                reasoning += "\n**Note:** Despite optimization, target trough cannot be fully achieved without exceeding AUC targets. Consider the AUC/MIC ratio as the primary target."
-                
-            if best_regimen['predicted_levels']['trough'] > targets['trough']['max']:
-                reasoning += "\n**Note:** Trough slightly exceeds target, but this is necessary to achieve target AUC. Monitor renal function closely."
-            
-            # Update the reasoning in the best regimen
-            best_regimen['reasoning'] = reasoning
-        
-        return best_regimen
-        
-    @staticmethod
-    def _validate_regimen(dose, interval, predicted_levels, patient_data):
-        """Validate a regimen and provide clinical warnings"""
-        warnings = []
-        
-        # Check dose against weight
-        weight = patient_data['weight']
-        if dose > 20 * weight and weight > 40:  # Adult
-            warnings.append(f"Dose ({dose} mg) exceeds 20 mg/kg (patient weight: {weight} kg)")
-        
-        # Check interval against renal function
-        crcl = patient_data['crcl']
-        if crcl < 30 and interval < 24:
-            warnings.append(f"Short interval ({interval}h) with CrCl of {crcl:.1f} mL/min may increase toxicity risk")
-        
-        # Check AUC against renal function
-        if 'auc' in predicted_levels:
-            auc = predicted_levels['auc']
-            if auc > 600 and crcl < 60:
-                warnings.append(f"High AUC ({auc:.1f} mg·hr/L) with reduced renal function (CrCl: {crcl:.1f} mL/min) increases nephrotoxicity risk")
-        
-        # Check trough against renal function
-        if 'trough' in predicted_levels:
-            trough = predicted_levels['trough']
-            if trough > 20 and crcl < 60:
-                warnings.append(f"High trough ({trough:.1f} mg/L) with reduced renal function (CrCl: {crcl:.1f} mL/min) increases nephrotoxicity risk")
-        
-        return warnings
