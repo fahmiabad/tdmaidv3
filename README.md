@@ -20,12 +20,23 @@ A Streamlit web application for therapeutic drug monitoring (TDM) of antimicrobi
 
 ## Features
 
+### Core Functionality
 - **Aminoglycoside Initial Dose Calculator**: Calculate initial doses based on population pharmacokinetics
 - **Aminoglycoside Dose Adjustment**: Adjust doses based on measured peak and trough levels (C1/C2)
 - **Vancomycin AUC-based Dosing**: Calculate and adjust vancomycin doses using AUC methodology
+- **Single Level Adjustments**: Adjust vancomycin doses based on a single trough or random level
+- **Peak/Trough Adjustments**: Adjust vancomycin doses using both peak and trough levels
 - **Clinical Interpretation**: Automated clinical recommendations based on calculated parameters
 - **Concentration-Time Curves**: Visual representation of drug concentrations over time
+
+### Enhanced Features
 - **Patient-specific Adjustments**: Considers renal function, weight, and other patient factors
+- **Clear Therapeutic Range Indicators**: Visual indicators for below/within/above target levels
+- **Practical Dosing Intervals**: Supports intervals of 6, 8, 12, 24, 36, 48, and 72 hours
+- **Single Best Regimen Recommendations**: Provides one optimal dosing recommendation
+- **Detailed Clinical Reasoning**: Explains why a specific regimen was recommended
+- **Input Validation**: Warns about clinically implausible or unusual values
+- **Improved Error Handling**: Better error messages and fallbacks for edge cases
 
 ## Quick Start
 
@@ -33,8 +44,8 @@ A Streamlit web application for therapeutic drug monitoring (TDM) of antimicrobi
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/yourusername/antimicrobial-tdm-flat.git
-   cd antimicrobial-tdm-flat
+   git clone https://github.com/yourusername/antimicrobial-tdm-app.git
+   cd antimicrobial-tdm-app
    ```
 
 2. Create a virtual environment (optional but recommended):
@@ -71,40 +82,13 @@ The app will be available at `http://localhost:8501`
    - Go to App Settings > Secrets
    - Add your OpenAI API key (optional)
 
-## Project Structure (Flat Structure)
-
-```
-antimicrobial-tdm-flat/
-├── app.py                     # Main Streamlit application
-├── config.py                  # Drug configurations
-├── pk_calculations.py         # Pharmacokinetic calculations
-├── clinical_logic.py          # Clinical interpretation logic
-├── visualization.py           # Concentration-time curve visualization
-├── ui_components.py           # Reusable UI components
-├── aminoglycoside_module.py   # Aminoglycoside-specific calculations
-├── vancomycin_module.py       # Vancomycin-specific calculations
-├── requirements.txt           # Python dependencies
-├── .streamlit/
-│   └── secrets.toml          # Local secrets (don't commit!)
-├── .gitignore                # Git ignore file
-└── README.md                 # This documentation
-```
-
-## Technologies Used
-
-- **Streamlit**: Web application framework
-- **Python 3.8+**: Core programming language
-- **NumPy & Pandas**: Mathematical calculations and data handling
-- **Altair**: Interactive visualizations
-- **SciPy**: Advanced mathematical calculations
-- **OpenAI API**: Clinical interpretation assistance (optional)
-
-## Usage Guide
+## User Guide
 
 ### 1. Patient Information
 - Enter patient demographics in the sidebar
 - System automatically calculates creatinine clearance
-- Add clinical notes and current medication information
+- Add clinical notes, diagnosis, and current medication information
+- All inputs are validated to ensure clinically reasonable values
 
 ### 2. Module Selection
 Choose from three main modules:
@@ -112,30 +96,64 @@ Choose from three main modules:
 - **Aminoglycoside Dose Adjustment**: When you have measured levels
 - **Vancomycin AUC-based Dosing**: For AUC/MIC-guided therapy
 
-### 3. Drug Selection
-- Select specific drug (Gentamicin, Amikacin, or Vancomycin)
-- Choose dosing strategy (MDD, SDD, Synergy, etc.)
-- Set target ranges based on indication
+### 3. Vancomycin Dosing Methods
+Choose from three approaches:
+- **Calculate Initial Dose**: For new patients with no levels
+- **Adjust Using Single Level**: Using a trough or random level
+- **Adjust Using Peak & Trough**: When both peak and trough are available
+
+#### 3.1 Single Level Adjustment
+- Enter current dose and interval
+- Specify whether the level is a trough or random level
+- Enter the timing of dose administration and sample collection
+- The system calculates individualized PK parameters
+- A single optimal regimen is recommended based on:
+  - Target AUC/MIC achievement
+  - Trough within target range
+  - Appropriateness for renal function
+  - Practical dosing considerations
+
+#### 3.2 Peak/Trough Adjustment
+- Enter current dose, interval, and infusion duration
+- Enter peak and trough levels with timing information
+- The system calculates individualized PK parameters
+- A single optimal regimen is recommended with clinical reasoning
 
 ### 4. Results Interpretation
-- View calculated PK parameters
-- Check predicted levels against targets
-- Review clinical recommendations
+- View calculated PK parameters (ke, t½, Vd, CL)
+- Check predicted levels against targets with clear visual indicators
+- Review the detailed clinical reasoning behind recommendations
 - Visualize concentration-time profile
+- Download a comprehensive report for documentation
 
-## Clinical Algorithms
+### 5. Clinical Recommendations
+- Recommendations include specific actions needed
+- Visual indicators clearly show if levels are below/within/above range
+- System suggests appropriate timing for repeat level measurements
+- Special warnings for patients with impaired renal function
 
-### Aminoglycoside Dosing
-- Uses population pharmacokinetics
-- Adjusts for renal function and weight
-- Supports multiple dosing strategies (MDD, SDD, Synergy)
-- Level-based adjustment using Sawchuk-Zaske method
+## Technical Details
 
-### Vancomycin Dosing
-- AUC-based dosing as per latest guidelines
-- Linear-log trapezoidal method for AUC calculation
-- Bayesian-like adjustment based on measured levels
-- Supports empiric and definitive therapy targets
+### Vancomycin AUC Calculation
+- Uses linear-log trapezoidal method for AUC calculation
+- Supports single-level Bayesian-like estimation
+- Handles random levels drawn at any point in the dosing interval
+- Provides robust error handling for edge cases
+
+### Optimal Regimen Selection
+- Scores potential regimens based on multiple factors:
+  - AUC target achievement (weighted heavily)
+  - Trough within target range
+  - Appropriateness for renal function
+  - Practical dosing considerations
+- Presents a single clear recommendation with explanation
+- Provides detailed clinical reasoning for the selected regimen
+
+### Clinical Assessment
+- Clearly labels levels as below/within/above therapeutic range
+- Uses color-coded icons for visual clarity
+- Provides specific, actionable recommendations
+- Suggests timing for follow-up monitoring based on clinical status
 
 ## Important Notes
 
@@ -146,7 +164,7 @@ Choose from three main modules:
 
 ## Contributing
 
-Issues and pull requests are welcome. Please ensure any contributions maintain the flat structure for easier deployment.
+Issues and pull requests are welcome. Please ensure any contributions maintain the structure for easier deployment.
 
 ## Support
 
